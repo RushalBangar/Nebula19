@@ -6,6 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nebula | Real-time Secure Chat</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+    <!-- Performance: Resource Hints & Preconnects -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://api.dicebear.com">
+    <link rel="dns-prefetch" href="https://assets.mixkit.co">
+
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
@@ -178,6 +187,12 @@
                 <!-- Messages Area -->
                 <div id="messages-container" class="messages-area">
                     <div class="messages-wrapper" id="messages-wrapper">
+                        <!-- Load earlier messages button -->
+                        <div id="load-earlier-container" class="load-earlier-container hidden">
+                            <button id="load-earlier-btn" class="glass-button small-btn" type="button">
+                                <i class="fas fa-history"></i> Load Earlier Messages
+                            </button>
+                        </div>
                         <!-- Messages dynamically rendered here -->
                     </div>
 
@@ -186,7 +201,7 @@
                         <div class="drag-content">
                             <i class="fas fa-cloud-upload-alt"></i>
                             <h3>Drop image to upload</h3>
-                            <p>Supports PNG, JPG, GIF up to 5MB</p>
+                            <p>Fast auto-compression enabled</p>
                         </div>
                     </div>
 
@@ -260,13 +275,13 @@
     </footer>
 
     <!-- Firebase JS SDK (Compat version: works on file:// and http://) -->
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
     <!-- Main Application Script -->
-    <script src="script.js?v=13"></script>
+    <script defer src="script.js?v=14"></script>
 </body>
 
 </html>
