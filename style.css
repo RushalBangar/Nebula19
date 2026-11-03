@@ -332,6 +332,40 @@ body {
     color: var(--text-primary);
 }
 
+.auth-divider {
+    display: flex;
+    align-items: center;
+    margin: 18px 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    font-weight: 700;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.auth-divider span {
+    padding: 0 12px;
+}
+
+.test-mode-btn {
+    border: 1px dashed var(--neon-cyan) !important;
+    color: var(--neon-cyan) !important;
+    background: rgba(6, 182, 212, 0.08) !important;
+    margin-top: 0 !important;
+}
+
+.test-mode-btn:hover {
+    background: rgba(6, 182, 212, 0.18) !important;
+    box-shadow: 0 0 16px rgba(6, 182, 212, 0.35) !important;
+}
+
 .switch-text {
     text-align: center;
     margin-top: 24px;

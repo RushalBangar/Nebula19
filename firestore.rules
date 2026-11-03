@@ -1,22 +1,9 @@
+// TEST MODE: Open read/write access for testing & development
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /rooms/{roomCode} {
-      allow read, write: if request.auth != null;
-
-      match /messages/{messageId} {
-        allow read, create: if request.auth != null;
-        allow update, delete: if request.auth != null;
-      }
-
-      match /presence/{userId} {
-        allow read, write: if request.auth != null;
-      }
-
-      match /typing/{userId} {
-        allow read, write: if request.auth != null;
-      }
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
-

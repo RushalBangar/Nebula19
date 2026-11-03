@@ -1,10 +1,9 @@
+// TEST MODE: Open read/write access for testing & development
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /chat-images/{roomCode}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null && request.resource.size < 5 * 1024 * 1024;
+    match /{allPaths=**} {
+      allow read, write: if true;
     }
   }
 }
-

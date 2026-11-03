@@ -7,6 +7,7 @@ import {
     getAuth,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
+    signInAnonymously,
     signOut,
     onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
@@ -86,6 +87,8 @@ const signupEmail = document.getElementById('signup-email');
 const signupPassword = document.getElementById('signup-password');
 const loginBtn = document.getElementById('login-btn');
 const signupBtn = document.getElementById('signup-btn');
+const guestBtn = document.getElementById('guest-btn');
+const guestBtnSignup = document.getElementById('guest-btn-signup');
 const showSignupLink = document.getElementById('show-signup');
 const showLoginLink = document.getElementById('show-login');
 
@@ -131,28 +134,6 @@ function showScreen(screen) {
 
 function showError(message) {
     alert(message);
-}
-
-function getFriendlyAuthErrorMessage(error) {
-    const code = error.code || '';
-    switch (code) {
-        case 'auth/invalid-email':
-            return 'Please enter a valid email address.';
-        case 'auth/user-disabled':
-            return 'This account has been disabled.';
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-            return 'Invalid email or password. Please try again.';
-        case 'auth/email-already-in-use':
-            return 'An account with this email already exists. Please log in instead.';
-        case 'auth/weak-password':
-            return 'Password is too weak. Please use at least 6 characters.';
-        case 'auth/network-request-failed':
-            return 'Network error. Please check your internet connection.';
-        default:
-            return error.message || 'An authentication error occurred.';
-    }
 }
 
 function formatTime(timestamp) {
@@ -265,27 +246,66 @@ function showTypingIndicator(userEmail) {
 }
 
 // =====================================================
-// Authentication Functions
+// Authentication Functions (With Relaxed Test Mode)
 // =====================================================
+
+async function handleGuestSignIn() {
+    showLoading();
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    const guestEmail = `tester${randomNum}@nebula.test`;
+
+    try {
+        // Try Firebase Anonymous Authentication
+        const userCredential = await signInAnonymously(auth);
+        currentUser = {
+            uid: userCredential.user.uid,
+            email: guestEmail
+        };
+        sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+        showLobby();
+    } catch (err) {
+        console.warn('Anonymous auth not enabled in Firebase Console, using local test session:', err);
+        // Fallback: seamless offline/guest user session for instant testing
+        currentUser = {
+            uid: 'guest-' + Math.random().toString(36).substring(2, 10),
+            email: guestEmail
+        };
+        sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+        showLobby();
+    } finally {
+        hideLoading();
+    }
+}
 
 async function handleLogin(e) {
     if (e) e.preventDefault();
-    const email = loginEmail.value.trim();
-    const password = loginPassword.value;
-
-    if (!email || !password) {
-        showError('Please enter both email and password');
-        return;
-    }
+    const email = loginEmail.value.trim() || 'tester@nebula.test';
+    const password = loginPassword.value || '123456';
 
     showLoading();
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         currentUser = userCredential.user;
+        sessionStorage.removeItem('nebula_test_user');
         showLobby();
     } catch (error) {
-        console.error('Login error:', error);
-        showError(getFriendlyAuthErrorMessage(error));
+        console.warn('Standard login failed, attempting auto-signup or test-mode bypass:', error);
+        // In test mode: If account does not exist yet, auto-create it
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password.length >= 6 ? password : password + '123456');
+            currentUser = userCredential.user;
+            sessionStorage.removeItem('nebula_test_user');
+            showLobby();
+        } catch (signupErr) {
+            console.warn('Auto-signup failed, entering with test-mode session:', signupErr);
+            // Relaxed test-mode fallback: allow entering immediately
+            currentUser = {
+                uid: 'user-' + Math.random().toString(36).substring(2, 10),
+                email: email
+            };
+            sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+            showLobby();
+        }
     } finally {
         hideLoading();
     }
@@ -293,28 +313,23 @@ async function handleLogin(e) {
 
 async function handleSignup(e) {
     if (e) e.preventDefault();
-    const email = signupEmail.value.trim();
-    const password = signupPassword.value;
-
-    if (!email || !password) {
-        showError('Please enter both email and password');
-        return;
-    }
-
-    if (password.length < 6) {
-        showError('Password must be at least 6 characters');
-        return;
-    }
+    const email = signupEmail.value.trim() || 'tester@nebula.test';
+    const password = signupPassword.value || '123456';
 
     showLoading();
     try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password.length >= 6 ? password : password + '123456');
         currentUser = userCredential.user;
-        showError('Account created successfully! Welcome to Nebula.');
+        sessionStorage.removeItem('nebula_test_user');
         showLobby();
     } catch (error) {
-        console.error('Signup error:', error);
-        showError(getFriendlyAuthErrorMessage(error));
+        console.warn('Signup failed, entering with test-mode session:', error);
+        currentUser = {
+            uid: 'user-' + Math.random().toString(36).substring(2, 10),
+            email: email
+        };
+        sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+        showLobby();
     } finally {
         hideLoading();
     }
@@ -323,6 +338,7 @@ async function handleSignup(e) {
 async function handleLogout() {
     showLoading();
     leaveRoomCleanup();
+    sessionStorage.removeItem('nebula_test_user');
     try {
         await signOut(auth);
     } catch (error) {
@@ -603,7 +619,7 @@ async function sendMessage() {
 
 function displayMessage(message, isUpdate = false, insertBeforeNode = null) {
     const messageDiv = document.createElement('div');
-    const isMine = currentUser && message.user_email === currentUser.email;
+    const isMine = currentUser && (message.user_email === currentUser.email || message.user_id === currentUser.uid);
     const avatarUrl = getAvatarUrl(message.user_email);
 
     const rawContent = message.content || '';
@@ -755,6 +771,9 @@ function leaveRoom() {
 // Auth Events
 loginBtn.addEventListener('click', handleLogin);
 signupBtn.addEventListener('click', handleSignup);
+if (guestBtn) guestBtn.addEventListener('click', handleGuestSignIn);
+if (guestBtnSignup) guestBtnSignup.addEventListener('click', handleGuestSignIn);
+
 showSignupLink.addEventListener('click', (e) => {
     e.preventDefault();
     toggleAuthForms();
@@ -765,6 +784,9 @@ showLoginLink.addEventListener('click', (e) => {
 });
 
 loginPassword.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleLogin(e);
+});
+loginEmail.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handleLogin(e);
 });
 signupPassword.addEventListener('keypress', (e) => {
@@ -912,9 +934,23 @@ window.addEventListener('beforeunload', () => {
 function initializeAppAuth() {
     showLoading();
 
-    // Listen for authentication state changes (replaces getSession + onAuthStateChange)
+    // Check if there is an active test-mode session in this tab
+    const savedTestUser = sessionStorage.getItem('nebula_test_user');
+    if (savedTestUser) {
+        try {
+            currentUser = JSON.parse(savedTestUser);
+            hideLoading();
+            showLobby();
+            return;
+        } catch (e) {
+            sessionStorage.removeItem('nebula_test_user');
+        }
+    }
+
+    // Listen for authentication state changes
     onAuthStateChanged(auth, (user) => {
         hideLoading();
+        if (sessionStorage.getItem('nebula_test_user')) return;
         if (user) {
             currentUser = user;
             showLobby();

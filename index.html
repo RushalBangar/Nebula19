@@ -36,16 +36,25 @@
                 <h2>Welcome Back</h2>
                 <div class="input-field">
                     <i class="fas fa-envelope"></i>
-                    <input type="email" id="login-email" placeholder="Email address" required>
+                    <input type="email" id="login-email" placeholder="Email address">
                 </div>
                 <div class="input-field">
                     <i class="fas fa-lock"></i>
-                    <input type="password" id="login-password" placeholder="Password" required>
+                    <input type="password" id="login-password" placeholder="Password">
                 </div>
                 <button id="login-btn" class="glow-button">
                     <span>Log In</span>
                     <i class="fas fa-arrow-right"></i>
                 </button>
+
+                <div class="auth-divider">
+                    <span>TEST MODE</span>
+                </div>
+                <button id="guest-btn" class="glass-button test-mode-btn" type="button">
+                    <i class="fas fa-bolt"></i>
+                    <span>⚡ 1-Click Guest Sign-In</span>
+                </button>
+
                 <p class="switch-text">
                     Don't have an account? <a href="#" id="show-signup" class="link-gradient">Sign Up</a>
                 </p>
@@ -56,16 +65,25 @@
                 <h2>Create Account</h2>
                 <div class="input-field">
                     <i class="fas fa-envelope"></i>
-                    <input type="email" id="signup-email" placeholder="Email address" required>
+                    <input type="email" id="signup-email" placeholder="Email address">
                 </div>
                 <div class="input-field">
                     <i class="fas fa-lock"></i>
-                    <input type="password" id="signup-password" placeholder="Password (min 6 characters)" required>
+                    <input type="password" id="signup-password" placeholder="Password (min 6 characters)">
                 </div>
                 <button id="signup-btn" class="glow-button">
                     <span>Sign Up</span>
                     <i class="fas fa-user-plus"></i>
                 </button>
+
+                <div class="auth-divider">
+                    <span>TEST MODE</span>
+                </div>
+                <button id="guest-btn-signup" class="glass-button test-mode-btn" type="button">
+                    <i class="fas fa-bolt"></i>
+                    <span>⚡ 1-Click Guest Sign-In</span>
+                </button>
+
                 <p class="switch-text">
                     Already have an account? <a href="#" id="show-login" class="link-gradient">Log In</a>
                 </p>
@@ -181,8 +199,7 @@
     </footer>
 
     <!-- Firebase JS Module -->
-
-    <script type="module" src="script.js?v=10"></script>
+    <script type="module" src="script.js?v=11"></script>
 </body>
 
 </html>
