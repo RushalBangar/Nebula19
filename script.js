@@ -807,7 +807,7 @@
     async function handleGuestSignIn() {
         showLoading();
         const randomNum = Math.floor(100 + Math.random() * 900);
-        const guestEmail = `tester${randomNum}@nebula.test`;
+        const guestEmail = `agent${randomNum}@nebula.stealth`;
 
         if (auth && !isOfflineFallback) {
             try {
@@ -817,7 +817,7 @@
                     email: guestEmail
                 };
                 sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
-                showToast(`Signed in as ${guestEmail}`, 'success');
+                showToast(`Stealth Guest Mode: ${guestEmail}`, 'success');
                 showLobby();
                 hideLoading();
                 return;
@@ -832,7 +832,7 @@
             email: guestEmail
         };
         sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
-        showToast(`Guest session: ${guestEmail}`, 'success');
+        showToast(`Stealth Guest Mode: ${guestEmail}`, 'success');
         showLobby();
         hideLoading();
     }
@@ -926,9 +926,24 @@
         showScreen(authScreen);
     }
 
-    function toggleAuthForms() {
-        if (loginForm) loginForm.classList.toggle('hidden');
-        if (signupForm) signupForm.classList.toggle('hidden');
+    function toggleAuthForms(target = null) {
+        const tabLogin = document.getElementById('tab-login');
+        const tabSignup = document.getElementById('tab-signup');
+
+        if (target === 'login') {
+            if (loginForm) loginForm.classList.remove('hidden');
+            if (signupForm) signupForm.classList.add('hidden');
+        } else if (target === 'signup') {
+            if (loginForm) loginForm.classList.add('hidden');
+            if (signupForm) signupForm.classList.remove('hidden');
+        } else {
+            if (loginForm) loginForm.classList.toggle('hidden');
+            if (signupForm) signupForm.classList.toggle('hidden');
+        }
+
+        const isLoginVisible = loginForm && !loginForm.classList.contains('hidden');
+        if (tabLogin) tabLogin.classList.toggle('active', isLoginVisible);
+        if (tabSignup) tabSignup.classList.toggle('active', !isLoginVisible);
     }
 
     // =====================================================
@@ -1732,16 +1747,74 @@
         if (guestBtn) guestBtn.addEventListener('click', handleGuestSignIn);
         if (guestBtnSignup) guestBtnSignup.addEventListener('click', handleGuestSignIn);
 
+        // Segmented Nav Tabs
+        const tabLogin = document.getElementById('tab-login');
+        const tabSignup = document.getElementById('tab-signup');
+        if (tabLogin) tabLogin.addEventListener('click', () => toggleAuthForms('login'));
+        if (tabSignup) tabSignup.addEventListener('click', () => toggleAuthForms('signup'));
+
+        // Password Show/Hide Toggles
+        document.querySelectorAll('.toggle-password-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const field = btn.closest('.password-field');
+                if (!field) return;
+                const input = field.querySelector('input');
+                const icon = btn.querySelector('i');
+                if (!input) return;
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                if (icon) {
+                    icon.className = isPassword ? 'far fa-eye-slash' : 'far fa-eye';
+                }
+            });
+        });
+
+        // Direct Room Jump Accordion on Auth Screen
+        const toggleDirectRoomBtn = document.getElementById('toggle-direct-room-btn');
+        const directRoomInputs = document.getElementById('direct-room-inputs');
+        const directRoomCodeInput = document.getElementById('direct-room-code-input');
+        const directRoomJoinBtn = document.getElementById('direct-room-join-btn');
+
+        if (toggleDirectRoomBtn && directRoomInputs) {
+            toggleDirectRoomBtn.addEventListener('click', () => {
+                directRoomInputs.classList.toggle('hidden');
+                if (!directRoomInputs.classList.contains('hidden') && directRoomCodeInput) {
+                    directRoomCodeInput.focus();
+                }
+            });
+        }
+
+        const handleDirectRoomJoin = async () => {
+            if (!directRoomCodeInput) return;
+            const code = directRoomCodeInput.value.trim().toUpperCase();
+            if (!code) {
+                showToast('Please enter a secret room code.', 'error');
+                return;
+            }
+            pendingRoomCode = code;
+            await handleGuestSignIn();
+        };
+
+        if (directRoomJoinBtn) {
+            directRoomJoinBtn.addEventListener('click', handleDirectRoomJoin);
+        }
+        if (directRoomCodeInput) {
+            directRoomCodeInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleDirectRoomJoin();
+            });
+        }
+
         if (showSignupLink) {
             showSignupLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                toggleAuthForms();
+                toggleAuthForms('signup');
             });
         }
         if (showLoginLink) {
             showLoginLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                toggleAuthForms();
+                toggleAuthForms('login');
             });
         }
 

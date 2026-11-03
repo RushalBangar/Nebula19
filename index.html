@@ -33,23 +33,41 @@
     <div id="auth-screen" class="screen">
         <div class="glass-card auth-card">
             <div class="auth-header">
-                <div class="logo-icon">
-                    <i class="fas fa-comments"></i>
+                <div class="logo-icon stealth-logo">
+                    <div class="logo-glow-ring"></div>
+                    <i class="fas fa-user-secret"></i>
                 </div>
-                <h1 class="gradient-text">Nebula</h1>
-                <p class="subtitle">Real-time messaging reimagined</p>
+                <h1 class="gradient-text brand-title">Nebula <span class="brand-tag">19</span></h1>
+                <p class="subtitle">Zero-Trace Ephemeral Chat Space</p>
+                <div class="auth-security-tags">
+                    <span class="sec-tag"><i class="fas fa-shield-alt"></i> AES-256 E2EE</span>
+                    <span class="sec-tag"><i class="fas fa-ghost"></i> Zero-Trace</span>
+                    <span class="sec-tag"><i class="fas fa-fire-alt"></i> Auto-Burn</span>
+                </div>
+            </div>
+
+            <!-- Segmented Form Tabs -->
+            <div class="auth-nav-tabs">
+                <button type="button" id="tab-login" class="auth-tab-btn active">
+                    <i class="fas fa-sign-in-alt"></i> Log In
+                </button>
+                <button type="button" id="tab-signup" class="auth-tab-btn">
+                    <i class="fas fa-user-plus"></i> Create Account
+                </button>
             </div>
 
             <!-- Login Form -->
             <div id="login-form" class="auth-form">
-                <h2>Welcome Back</h2>
                 <div class="input-field">
-                    <i class="fas fa-envelope"></i>
-                    <input type="email" id="login-email" placeholder="Email address">
+                    <i class="fas fa-envelope input-icon-left"></i>
+                    <input type="email" id="login-email" placeholder="Email address" autocomplete="username">
                 </div>
-                <div class="input-field">
-                    <i class="fas fa-lock"></i>
-                    <input type="password" id="login-password" placeholder="Password">
+                <div class="input-field password-field">
+                    <i class="fas fa-lock input-icon-left"></i>
+                    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+                    <button type="button" class="toggle-password-btn" title="Toggle password visibility" tabindex="-1">
+                        <i class="far fa-eye"></i>
+                    </button>
                 </div>
                 <button id="login-btn" class="glow-button">
                     <span>Log In</span>
@@ -57,12 +75,31 @@
                 </button>
 
                 <div class="auth-divider">
-                    <span>TEST MODE</span>
+                    <span>OR ENTER ANONYMOUSLY</span>
                 </div>
-                <button id="guest-btn" class="glass-button test-mode-btn" type="button">
-                    <i class="fas fa-bolt"></i>
-                    <span>⚡ 1-Click Guest Sign-In</span>
+                <button id="guest-btn" class="glass-button stealth-guest-btn" type="button">
+                    <div class="guest-btn-left">
+                        <i class="fas fa-bolt"></i>
+                        <span>1-Click Anonymous Guest Mode</span>
+                    </div>
+                    <span class="guest-badge-pill">No Email</span>
                 </button>
+
+                <!-- Direct Room Code Entry Accordion -->
+                <div class="direct-room-entry" id="direct-room-box">
+                    <button type="button" id="toggle-direct-room-btn" class="text-link-btn">
+                        <i class="fas fa-key"></i> Have a secret room code? Join directly
+                    </button>
+                    <div id="direct-room-inputs" class="direct-room-inputs hidden">
+                        <div class="direct-input-group">
+                            <input type="text" id="direct-room-code-input" placeholder="Room Code (e.g. ALPHA-99)" maxlength="24" autocomplete="off">
+                            <button type="button" id="direct-room-join-btn" class="glow-button direct-join-btn">
+                                <span>Join</span>
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
                 <p class="switch-text">
                     Don't have an account? <a href="#" id="show-signup" class="link-gradient">Sign Up</a>
@@ -71,26 +108,31 @@
 
             <!-- Signup Form -->
             <div id="signup-form" class="auth-form hidden">
-                <h2>Create Account</h2>
                 <div class="input-field">
-                    <i class="fas fa-envelope"></i>
-                    <input type="email" id="signup-email" placeholder="Email address">
+                    <i class="fas fa-envelope input-icon-left"></i>
+                    <input type="email" id="signup-email" placeholder="Email address" autocomplete="username">
                 </div>
-                <div class="input-field">
-                    <i class="fas fa-lock"></i>
-                    <input type="password" id="signup-password" placeholder="Password (min 6 characters)">
+                <div class="input-field password-field">
+                    <i class="fas fa-lock input-icon-left"></i>
+                    <input type="password" id="signup-password" placeholder="Password (min 6 characters)" autocomplete="new-password">
+                    <button type="button" class="toggle-password-btn" title="Toggle password visibility" tabindex="-1">
+                        <i class="far fa-eye"></i>
+                    </button>
                 </div>
                 <button id="signup-btn" class="glow-button">
-                    <span>Sign Up</span>
+                    <span>Create Account</span>
                     <i class="fas fa-user-plus"></i>
                 </button>
 
                 <div class="auth-divider">
-                    <span>TEST MODE</span>
+                    <span>OR ENTER ANONYMOUSLY</span>
                 </div>
-                <button id="guest-btn-signup" class="glass-button test-mode-btn" type="button">
-                    <i class="fas fa-bolt"></i>
-                    <span>⚡ 1-Click Guest Sign-In</span>
+                <button id="guest-btn-signup" class="glass-button stealth-guest-btn" type="button">
+                    <div class="guest-btn-left">
+                        <i class="fas fa-bolt"></i>
+                        <span>1-Click Anonymous Guest Mode</span>
+                    </div>
+                    <span class="guest-badge-pill">No Email</span>
                 </button>
 
                 <p class="switch-text">
