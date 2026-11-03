@@ -35,6 +35,7 @@
     // Global Application State
     let currentUser = null;
     let currentRoomCode = null;
+    let pendingRoomCode = null;
     let unsubscribeMessages = null;
     let unsubscribePresence = null;
     let unsubscribeTyping = null;
@@ -43,12 +44,19 @@
     let lastTypingBroadcast = 0;
     let onlineUsers = {};
     let isInitialMessagesLoad = true;
+    let isSoundMuted = localStorage.getItem('nebula_sound_muted') === 'true';
+
+    // State for consecutive message grouping & date dividers
+    let lastRenderedDateStr = null;
+    let lastRenderedEmail = null;
+    let lastRenderedTimestamp = 0;
 
     // DOM Elements
     const authScreen = document.getElementById('auth-screen');
     const lobbyScreen = document.getElementById('lobby-screen');
     const chatScreen = document.getElementById('chat-screen');
     const loadingOverlay = document.getElementById('loading-overlay');
+    const toastContainer = document.getElementById('toast-container');
 
     // Auth Elements
     const loginForm = document.getElementById('login-form');
@@ -69,6 +77,9 @@
     const roomCodeInput = document.getElementById('room-code-input');
     const joinRoomBtn = document.getElementById('join-room-btn');
     const logoutBtnLobby = document.getElementById('logout-btn-lobby');
+    const suggestedRooms = document.getElementById('suggested-rooms');
+    const recentRoomsList = document.getElementById('recent-rooms-list');
+    const recentRoomsSection = document.getElementById('recent-rooms-section');
 
     // Chat Elements
     const currentRoomName = document.getElementById('current-room-name');
@@ -79,11 +90,53 @@
     const sendBtn = document.getElementById('send-btn');
     const leaveRoomBtn = document.getElementById('leave-room-btn');
     const logoutBtnChat = document.getElementById('logout-btn-chat');
+    const shareRoomBtn = document.getElementById('share-room-btn');
+    const soundToggleBtn = document.getElementById('sound-toggle-btn');
+    const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+    const closeSidebarBtn = document.getElementById('close-sidebar-btn');
+    const chatSidebar = document.getElementById('chat-sidebar');
     const imageUploadInput = document.getElementById('image-upload-input');
+    const dragOverlay = document.getElementById('drag-overlay');
+    const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
+    const scrollBadge = document.getElementById('scroll-badge');
     const typingIndicator = document.getElementById('typing-indicator');
     const typingUserText = document.getElementById('typing-user-text');
     const onlineUsersList = document.getElementById('online-users-list');
     const onlineCount = document.getElementById('online-count');
+
+    // Lightbox Elements
+    const imageLightbox = document.getElementById('image-lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+    const lightboxClose = document.getElementById('lightbox-close');
+    const lightboxDownload = document.getElementById('lightbox-download');
+
+    // =====================================================
+    // Toast Notification System
+    // =====================================================
+
+    function showToast(message, type = 'info', duration = 3500) {
+        if (!toastContainer) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        let iconClass = 'fa-info-circle';
+        if (type === 'success') iconClass = 'fa-check-circle';
+        if (type === 'error') iconClass = 'fa-exclamation-circle';
+
+        toast.innerHTML = `
+            <i class="fas ${iconClass}"></i>
+            <span>${escapeHtml(message)}</span>
+        `;
+
+        toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, duration);
+    }
 
     // =====================================================
     // Utility Functions
@@ -104,10 +157,6 @@
         screen.classList.remove('hidden');
     }
 
-    function showError(message) {
-        alert(message);
-    }
-
     function formatTime(timestamp) {
         if (!timestamp) {
             return new Date().toLocaleTimeString('en-US', {
@@ -126,9 +175,7 @@
             date = new Date(timestamp);
         }
 
-        if (isNaN(date.getTime())) {
-            date = new Date();
-        }
+        if (isNaN(date.getTime())) date = new Date();
 
         return date.toLocaleTimeString('en-US', {
             hour: 'numeric',
@@ -137,18 +184,50 @@
         });
     }
 
+    function getDateDividerLabel(date) {
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
+
+        if (date.toDateString() === today.toDateString()) {
+            return 'Today';
+        } else if (date.toDateString() === yesterday.toDateString()) {
+            return 'Yesterday';
+        } else {
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        }
+    }
+
     function getAvatarUrl(email) {
         const seed = email || 'nebula-user';
         return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
     }
 
+    function updateSoundToggleUI() {
+        if (!soundToggleBtn) return;
+        if (isSoundMuted) {
+            soundToggleBtn.innerHTML = '<i class="fas fa-volume-mute"></i>';
+            soundToggleBtn.title = 'Unmute Sound';
+            soundToggleBtn.style.color = 'var(--text-secondary)';
+        } else {
+            soundToggleBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+            soundToggleBtn.title = 'Mute Sound';
+            soundToggleBtn.style.color = 'var(--neon-cyan)';
+        }
+    }
+
     function playNotificationSound() {
+        if (isSoundMuted) return;
         try {
             const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-            audio.volume = 0.3;
+            audio.volume = 0.35;
             audio.play().catch(() => {});
         } catch (e) {
-            // Audio playback fallback
+            // Audio fallback
         }
     }
 
@@ -173,10 +252,14 @@
         return parsed;
     }
 
-    function scrollToBottom() {
+    function scrollToBottom(smooth = true) {
         if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesContainer.scrollTo({
+                top: messagesContainer.scrollHeight,
+                behavior: smooth ? 'smooth' : 'auto'
+            });
         }
+        if (scrollBadge) scrollBadge.classList.add('hidden');
     }
 
     function checkEmptyState() {
@@ -191,7 +274,7 @@
                 emptyState.innerHTML = `
                     <i class="fas fa-comment-dots"></i>
                     <h3>Welcome to the Room!</h3>
-                    <p>Be the first to say hello.</p>
+                    <p>Be the first to say hello, paste an image, or share the link with a friend.</p>
                 `;
                 messagesWrapper.appendChild(emptyState);
             }
@@ -218,7 +301,88 @@
     }
 
     // =====================================================
-    // Authentication Functions (Instant Test Mode Enabled)
+    // Lightbox Viewer
+    // =====================================================
+
+    function openLightbox(imageUrl) {
+        if (!imageLightbox || !lightboxImg) return;
+        lightboxImg.src = imageUrl;
+        if (lightboxDownload) lightboxDownload.href = imageUrl;
+        imageLightbox.classList.remove('hidden');
+    }
+
+    function closeLightbox() {
+        if (!imageLightbox) return;
+        imageLightbox.classList.add('hidden');
+        if (lightboxImg) lightboxImg.src = '';
+    }
+
+    // =====================================================
+    // Recent Rooms & Quick Join Chips
+    // =====================================================
+
+    function getRecentRooms() {
+        try {
+            return JSON.parse(localStorage.getItem('nebula_recent_rooms') || '[]');
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveRecentRoom(room) {
+        if (!room) return;
+        const normalized = room.trim().toUpperCase();
+        let rooms = getRecentRooms().filter(r => r !== normalized);
+        rooms.unshift(normalized);
+        rooms = rooms.slice(0, 6); // Keep last 6 rooms
+        localStorage.setItem('nebula_recent_rooms', JSON.stringify(rooms));
+        renderRecentRooms();
+    }
+
+    function deleteRecentRoom(room) {
+        let rooms = getRecentRooms().filter(r => r !== room);
+        localStorage.setItem('nebula_recent_rooms', JSON.stringify(rooms));
+        renderRecentRooms();
+    }
+
+    function renderRecentRooms() {
+        if (!recentRoomsList || !recentRoomsSection) return;
+        const rooms = getRecentRooms();
+
+        if (rooms.length === 0) {
+            recentRoomsSection.style.display = 'none';
+            recentRoomsList.innerHTML = '';
+            return;
+        }
+
+        recentRoomsSection.style.display = 'block';
+        recentRoomsList.innerHTML = '';
+
+        rooms.forEach((room) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'room-chip';
+            btn.innerHTML = `
+                <span>#${room}</span>
+                <span class="chip-delete" title="Remove"><i class="fas fa-times"></i></span>
+            `;
+
+            btn.querySelector('.chip-delete').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteRecentRoom(room);
+            });
+
+            btn.addEventListener('click', () => {
+                roomCodeInput.value = room;
+                handleJoinRoom();
+            });
+
+            recentRoomsList.appendChild(btn);
+        });
+    }
+
+    // =====================================================
+    // Authentication Functions
     // =====================================================
 
     async function handleGuestSignIn() {
@@ -227,22 +391,22 @@
         const guestEmail = `tester${randomNum}@nebula.test`;
 
         try {
-            // Attempt Firebase Anonymous Auth
             const userCredential = await auth.signInAnonymously();
             currentUser = {
                 uid: userCredential.user.uid,
                 email: guestEmail
             };
             sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+            showToast(`Signed in as ${guestEmail}`, 'success');
             showLobby();
         } catch (err) {
             console.warn('Anonymous auth not enabled in Firebase Console, using local test session:', err);
-            // Fallback seamless test user session
             currentUser = {
                 uid: 'guest-' + Math.random().toString(36).substring(2, 10),
                 email: guestEmail
             };
             sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+            showToast(`Guest session active: ${guestEmail}`, 'success');
             showLobby();
         } finally {
             hideLoading();
@@ -259,13 +423,15 @@
             const userCredential = await auth.signInWithEmailAndPassword(email, password);
             currentUser = userCredential.user;
             sessionStorage.removeItem('nebula_test_user');
+            showToast('Welcome back!', 'success');
             showLobby();
         } catch (error) {
-            console.warn('Standard login failed, attempting auto-signup or test-mode bypass:', error);
+            console.warn('Login failed, attempting auto-signup or test bypass:', error);
             try {
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password.length >= 6 ? password : password + '123456');
                 currentUser = userCredential.user;
                 sessionStorage.removeItem('nebula_test_user');
+                showToast('Account created and signed in!', 'success');
                 showLobby();
             } catch (signupErr) {
                 console.warn('Auto-signup failed, entering with test-mode session:', signupErr);
@@ -274,6 +440,7 @@
                     email: email
                 };
                 sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+                showToast(`Test mode active for ${email}`, 'info');
                 showLobby();
             }
         } finally {
@@ -291,6 +458,7 @@
             const userCredential = await auth.createUserWithEmailAndPassword(email, password.length >= 6 ? password : password + '123456');
             currentUser = userCredential.user;
             sessionStorage.removeItem('nebula_test_user');
+            showToast('Account created successfully!', 'success');
             showLobby();
         } catch (error) {
             console.warn('Signup failed, entering with test-mode session:', error);
@@ -299,6 +467,7 @@
                 email: email
             };
             sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+            showToast(`Test mode session started for ${email}`, 'info');
             showLobby();
         } finally {
             hideLoading();
@@ -317,6 +486,7 @@
             hideLoading();
             currentUser = null;
             currentRoomCode = null;
+            showToast('You have logged out.', 'info');
             showScreen(authScreen);
         }
     }
@@ -334,6 +504,19 @@
         if (currentUser) {
             userEmailDisplay.textContent = currentUser.email;
         }
+
+        renderRecentRooms();
+
+        // Check if there was an invite link query parameter waiting
+        if (pendingRoomCode) {
+            const codeToJoin = pendingRoomCode;
+            pendingRoomCode = null;
+            currentRoomCode = codeToJoin;
+            saveRecentRoom(codeToJoin);
+            showChatRoom();
+            return;
+        }
+
         showScreen(lobbyScreen);
     }
 
@@ -341,11 +524,12 @@
         const roomCode = roomCodeInput.value.trim().toUpperCase();
 
         if (!roomCode) {
-            showError('Please enter a room code');
+            showToast('Please enter a room code', 'error');
             return;
         }
 
         currentRoomCode = roomCode;
+        saveRecentRoom(roomCode);
         showChatRoom();
     }
 
@@ -409,7 +593,7 @@
             const username = user.email ? user.email.split('@')[0] : 'User';
             li.innerHTML = `
                 <div class="user-status-indicator online"></div>
-                <span>${username}</span>
+                <span>${escapeHtml(username)}</span>
             `;
             onlineUsersList.appendChild(li);
         });
@@ -488,11 +672,17 @@
         currentUserEmail.textContent = currentUser.email;
         messagesWrapper.innerHTML = '';
 
+        // Reset grouping & date state
+        lastRenderedDateStr = null;
+        lastRenderedEmail = null;
+        lastRenderedTimestamp = 0;
+
         showScreen(chatScreen);
 
         subscribeToMessages();
         setupPresence();
         setupTypingListener();
+        updateSoundToggleUI();
 
         messageInput.focus();
     }
@@ -512,14 +702,41 @@
                 hideLoading();
                 const docChanges = snapshot.docChanges();
 
+                // If loading initial history, render sequentially
+                if (isInitialMessagesLoad) {
+                    messagesWrapper.innerHTML = '';
+                    lastRenderedDateStr = null;
+                    lastRenderedEmail = null;
+                    lastRenderedTimestamp = 0;
+
+                    snapshot.forEach((docSnap) => {
+                        const msgData = { id: docSnap.id, ...docSnap.data() };
+                        displayMessage(msgData);
+                    });
+
+                    isInitialMessagesLoad = false;
+                    scrollToBottom(false);
+                    checkEmptyState();
+                    return;
+                }
+
+                // Incremental updates
                 docChanges.forEach((change) => {
                     const msgData = { id: change.doc.id, ...change.doc.data() };
 
                     if (change.type === 'added') {
-                        displayMessage(msgData);
-                        scrollToBottom();
+                        const isNearBottom = messagesContainer ?
+                            (messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 150) : true;
 
-                        if (!isInitialMessagesLoad && msgData.user_email !== currentUser.email) {
+                        displayMessage(msgData);
+
+                        if (isNearBottom) {
+                            scrollToBottom(true);
+                        } else {
+                            if (scrollBadge) scrollBadge.classList.remove('hidden');
+                        }
+
+                        if (msgData.user_email !== currentUser.email) {
                             playNotificationSound();
                         }
                     } else if (change.type === 'modified') {
@@ -540,15 +757,11 @@
                     }
                 });
 
-                if (isInitialMessagesLoad) {
-                    isInitialMessagesLoad = false;
-                    scrollToBottom();
-                    checkEmptyState();
-                }
+                checkEmptyState();
             }, (error) => {
                 hideLoading();
                 console.error('Error listening to messages:', error);
-                showError('Error loading messages: ' + error.message);
+                showToast('Error loading messages: ' + error.message, 'error');
             });
     }
 
@@ -557,6 +770,7 @@
         if (!content) return;
 
         messageInput.value = '';
+        messageInput.style.height = 'auto'; // Reset textarea height
 
         try {
             await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
@@ -572,12 +786,81 @@
             });
         } catch (error) {
             console.error('Error sending message:', error);
-            showError('Error sending message: ' + error.message);
+            showToast('Error sending message: ' + error.message, 'error');
             messageInput.value = content;
         }
     }
 
+    async function uploadImageFile(file) {
+        if (!file || !currentRoomCode || !currentUser) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('Image must be less than 5MB', 'error');
+            return;
+        }
+
+        showLoading();
+        try {
+            const fileExt = file.name ? file.name.split('.').pop() : 'png';
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+            const imageStorageRef = storage.ref(`chat-images/${currentRoomCode}/${fileName}`);
+
+            const uploadSnapshot = await imageStorageRef.put(file);
+            const downloadUrl = await uploadSnapshot.ref.getDownloadURL();
+
+            await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
+                room_code: currentRoomCode,
+                user_email: currentUser.email,
+                user_id: currentUser.uid,
+                content: '*Sent an image*',
+                image_url: downloadUrl,
+                reactions: {},
+                is_deleted: false,
+                created_at: firebase.firestore.FieldValue.serverTimestamp(),
+                edited_at: null
+            });
+
+            showToast('Image uploaded successfully!', 'success');
+        } catch (err) {
+            console.error('Image upload failed:', err);
+            showToast('Failed to upload image: ' + err.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
     function displayMessage(message, isUpdate = false, insertBeforeNode = null) {
+        // Date divider check (for fresh sequential rendering)
+        let msgDate = new Date();
+        if (message.created_at) {
+            if (message.created_at.toDate) msgDate = message.created_at.toDate();
+            else msgDate = new Date(message.created_at);
+        }
+        const msgDateStr = msgDate.toDateString();
+
+        if (!isUpdate && msgDateStr !== lastRenderedDateStr) {
+            lastRenderedDateStr = msgDateStr;
+            const divider = document.createElement('div');
+            divider.className = 'date-divider';
+            divider.innerHTML = `<span>${getDateDividerLabel(msgDate)}</span>`;
+            if (insertBeforeNode) {
+                messagesWrapper.insertBefore(divider, insertBeforeNode);
+            } else {
+                messagesWrapper.appendChild(divider);
+            }
+        }
+
+        // Consecutive message grouping check (within 2 minutes from same sender)
+        const msgTime = msgDate.getTime();
+        const isConsecutive = !isUpdate &&
+            lastRenderedEmail === message.user_email &&
+            (msgTime - lastRenderedTimestamp < 120000);
+
+        if (!isUpdate) {
+            lastRenderedEmail = message.user_email;
+            lastRenderedTimestamp = msgTime;
+        }
+
         const messageDiv = document.createElement('div');
         const isMine = currentUser && (message.user_email === currentUser.email || message.user_id === currentUser.uid);
         const avatarUrl = getAvatarUrl(message.user_email);
@@ -587,8 +870,9 @@
         const linkedContent = linkifyText(escapedContent);
         const finalContent = message.is_deleted ? '<em>This message was deleted</em>' : parseMarkdown(linkedContent);
 
-        messageDiv.className = `message ${isMine ? 'mine' : 'others'}`;
+        messageDiv.className = `message ${isMine ? 'mine' : 'others'} ${isConsecutive ? 'grouped' : ''}`;
         messageDiv.setAttribute('data-msg-id', message.id);
+        messageDiv.setAttribute('data-content', rawContent);
 
         let actionsHtml = '';
         if (!message.is_deleted) {
@@ -601,6 +885,7 @@
             }
             actionsHtml = `
                 <div class="message-actions">
+                    <button class="action-btn copy-btn" data-id="${message.id}" title="Copy Text"><i class="fas fa-copy"></i></button>
                     <button class="action-btn react-btn" data-id="${message.id}" title="React"><i class="fas fa-smile"></i></button>
                     ${editDeleteHtml}
                     <!-- Emoji Picker Popup -->
@@ -617,7 +902,7 @@
 
         let imageHtml = '';
         if (message.image_url && !message.is_deleted) {
-            imageHtml = `<img src="${message.image_url}" class="message-image" alt="Attachment" loading="lazy" />`;
+            imageHtml = `<img src="${message.image_url}" class="message-image" alt="Attachment" title="Click to view full image" loading="lazy" />`;
         }
 
         let reactionsHtml = '';
@@ -760,9 +1045,25 @@
         if (e.key === 'Enter') handleJoinRoom();
     });
 
+    // Suggested Channels in Lobby
+    if (suggestedRooms) {
+        suggestedRooms.addEventListener('click', (e) => {
+            const chip = e.target.closest('.room-chip');
+            if (chip) {
+                const targetRoom = chip.getAttribute('data-room');
+                if (targetRoom) {
+                    roomCodeInput.value = targetRoom;
+                    handleJoinRoom();
+                }
+            }
+        });
+    }
+
     // Chat Events
     sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
+
+    // Auto-expanding textarea & Enter-to-send (Shift+Enter for newline)
+    messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
@@ -770,51 +1071,138 @@
     });
 
     messageInput.addEventListener('input', () => {
+        messageInput.style.height = 'auto';
+        messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
         broadcastTyping();
     });
 
-    // Image Upload Event
+    // Image Upload Event (File Picker)
     imageUploadInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         imageUploadInput.value = '';
+        await uploadImageFile(file);
+    });
 
-        if (file.size > 5 * 1024 * 1024) {
-            showError('Image must be less than 5MB');
-            return;
-        }
+    // Clipboard Paste Image Event (Ctrl + V)
+    document.addEventListener('paste', async (e) => {
+        if (chatScreen.classList.contains('hidden')) return;
 
-        showLoading();
-        try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-            const imageStorageRef = storage.ref(`chat-images/${currentRoomCode}/${fileName}`);
-
-            const uploadSnapshot = await imageStorageRef.put(file);
-            const downloadUrl = await uploadSnapshot.ref.getDownloadURL();
-
-            await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
-                room_code: currentRoomCode,
-                user_email: currentUser.email,
-                user_id: currentUser.uid,
-                content: '*Sent an image*',
-                image_url: downloadUrl,
-                reactions: {},
-                is_deleted: false,
-                created_at: firebase.firestore.FieldValue.serverTimestamp(),
-                edited_at: null
-            });
-        } catch (err) {
-            console.error('Image upload failed:', err);
-            showError('Failed to upload image: ' + err.message);
-        } finally {
-            hideLoading();
+        const clipboardItems = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let i = 0; i < clipboardItems.length; i++) {
+            if (clipboardItems[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                const file = clipboardItems[i].getAsFile();
+                if (file) {
+                    showToast('Pasting image...', 'info');
+                    await uploadImageFile(file);
+                }
+                break;
+            }
         }
     });
 
-    // Edit, Delete, React Message Actions
+    // Drag and Drop Images
+    if (chatScreen && dragOverlay) {
+        window.addEventListener('dragover', (e) => {
+            if (chatScreen.classList.contains('hidden')) return;
+            e.preventDefault();
+            dragOverlay.classList.remove('hidden');
+        });
+
+        window.addEventListener('dragleave', (e) => {
+            if (e.clientX <= 0 || e.clientY <= 0) {
+                dragOverlay.classList.add('hidden');
+            }
+        });
+
+        window.addEventListener('drop', async (e) => {
+            if (chatScreen.classList.contains('hidden')) return;
+            e.preventDefault();
+            dragOverlay.classList.add('hidden');
+
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.type.startsWith('image/')) {
+                    showToast('Uploading dropped image...', 'info');
+                    await uploadImageFile(file);
+                } else {
+                    showToast('Only image files are supported.', 'error');
+                }
+            }
+        });
+    }
+
+    // Floating Scroll to Bottom Button
+    if (messagesContainer && scrollBottomBtn) {
+        messagesContainer.addEventListener('scroll', () => {
+            const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+            if (distanceFromBottom > 160) {
+                scrollBottomBtn.classList.remove('hidden');
+            } else {
+                scrollBottomBtn.classList.add('hidden');
+                if (scrollBadge) scrollBadge.classList.add('hidden');
+            }
+        });
+
+        scrollBottomBtn.addEventListener('click', () => {
+            scrollToBottom(true);
+        });
+    }
+
+    // Share Room Invite Link
+    if (shareRoomBtn) {
+        shareRoomBtn.addEventListener('click', () => {
+            if (!currentRoomCode) return;
+            const origin = window.location.origin;
+            const path = window.location.pathname;
+            const inviteUrl = `${origin}${path}?room=${encodeURIComponent(currentRoomCode)}`;
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(inviteUrl).then(() => {
+                    showToast(`Invite link copied for #${currentRoomCode}!`, 'success');
+                }).catch(() => {
+                    prompt('Copy this invite link:', inviteUrl);
+                });
+            } else {
+                prompt('Copy this invite link:', inviteUrl);
+            }
+        });
+    }
+
+    // Sound Chimes Toggle
+    if (soundToggleBtn) {
+        soundToggleBtn.addEventListener('click', () => {
+            isSoundMuted = !isSoundMuted;
+            localStorage.setItem('nebula_sound_muted', isSoundMuted ? 'true' : 'false');
+            updateSoundToggleUI();
+            showToast(isSoundMuted ? 'Sound chimes muted' : 'Sound chimes enabled', 'info');
+        });
+    }
+
+    // Mobile Sidebar Drawer Toggles
+    if (toggleSidebarBtn && chatSidebar) {
+        toggleSidebarBtn.addEventListener('click', () => {
+            chatSidebar.classList.toggle('sidebar-open');
+        });
+    }
+
+    if (closeSidebarBtn && chatSidebar) {
+        closeSidebarBtn.addEventListener('click', () => {
+            chatSidebar.classList.remove('sidebar-open');
+        });
+    }
+
+    // Messages Area Clicks (Lightbox, Copy, Reactions, Edit, Delete)
     messagesWrapper.addEventListener('click', async (e) => {
+        // Image Lightbox Preview
+        const img = e.target.closest('.message-image');
+        if (img) {
+            openLightbox(img.src);
+            return;
+        }
+
+        const copyBtn = e.target.closest('.copy-btn');
         const editBtn = e.target.closest('.edit-btn');
         const deleteBtn = e.target.closest('.delete-btn');
         const reactBtn = e.target.closest('.react-btn');
@@ -823,6 +1211,18 @@
 
         if (!reactBtn && !emojiOpt) {
             document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
+        }
+
+        if (copyBtn) {
+            const messageDiv = copyBtn.closest('.message');
+            const content = messageDiv ? messageDiv.getAttribute('data-content') : '';
+            if (content) {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(content).then(() => {
+                        showToast('Message copied to clipboard!', 'success');
+                    }).catch(() => {});
+                }
+            }
         }
 
         if (reactBtn) {
@@ -851,28 +1251,42 @@
                         is_deleted: true,
                         content: 'This message was deleted'
                     });
+                    showToast('Message deleted', 'info');
                 } catch (err) {
                     console.error('Failed to delete message:', err);
-                    showError('Failed to delete message: ' + err.message);
+                    showToast('Failed to delete message: ' + err.message, 'error');
                 }
             }
         }
 
         if (editBtn) {
             const messageId = editBtn.getAttribute('data-id');
-            const newContent = prompt('Edit your message:');
+            const msgDiv = editBtn.closest('.message');
+            const prevText = msgDiv ? msgDiv.getAttribute('data-content') : '';
+            const newContent = prompt('Edit your message:', prevText);
             if (newContent !== null && newContent.trim() !== '') {
                 try {
                     await db.collection('rooms').doc(currentRoomCode).collection('messages').doc(messageId).update({
                         content: newContent.trim(),
                         edited_at: firebase.firestore.FieldValue.serverTimestamp()
                     });
+                    showToast('Message updated', 'success');
                 } catch (err) {
                     console.error('Failed to edit message:', err);
-                    showError('Failed to edit message: ' + err.message);
+                    showToast('Failed to edit message: ' + err.message, 'error');
                 }
             }
         }
+    });
+
+    // Lightbox Modal Events
+    if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+    if (imageLightbox) {
+        const backdrop = imageLightbox.querySelector('.lightbox-backdrop');
+        if (backdrop) backdrop.addEventListener('click', closeLightbox);
+    }
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeLightbox();
     });
 
     leaveRoomBtn.addEventListener('click', leaveRoom);
@@ -889,7 +1303,14 @@
     function initializeAppAuth() {
         showLoading();
 
-        // Check if there is an active test-mode session in this tab
+        // Check for URL room query parameter (?room=ABC)
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomParam = urlParams.get('room');
+        if (roomParam) {
+            pendingRoomCode = roomParam.trim().toUpperCase();
+        }
+
+        // Check active test-mode session
         const savedTestUser = sessionStorage.getItem('nebula_test_user');
         if (savedTestUser) {
             try {

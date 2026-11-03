@@ -110,6 +110,26 @@
                     <span>Join Room</span>
                     <i class="fas fa-rocket"></i>
                 </button>
+
+                <!-- Suggested Public Channels -->
+                <div class="rooms-section">
+                    <span class="section-label"><i class="fas fa-compass"></i> Popular Channels</span>
+                    <div class="room-chips" id="suggested-rooms">
+                        <button type="button" class="room-chip" data-room="LOUNGE"><i class="fas fa-coffee"></i> #LOUNGE</button>
+                        <button type="button" class="room-chip" data-room="TECH"><i class="fas fa-laptop-code"></i> #TECH</button>
+                        <button type="button" class="room-chip" data-room="GAMING"><i class="fas fa-gamepad"></i> #GAMING</button>
+                        <button type="button" class="room-chip" data-room="RANDOM"><i class="fas fa-dice"></i> #RANDOM</button>
+                    </div>
+                </div>
+
+                <!-- Recent Rooms -->
+                <div class="rooms-section" id="recent-rooms-section">
+                    <span class="section-label"><i class="fas fa-history"></i> Recent Rooms</span>
+                    <div class="room-chips" id="recent-rooms-list">
+                        <!-- Populated dynamically via script -->
+                    </div>
+                </div>
+
                 <button id="logout-btn-lobby" class="glass-button">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
@@ -125,7 +145,7 @@
             <div class="chat-main-column">
                 <!-- Chat Header -->
                 <div class="chat-header-glass">
-                    <button id="leave-room-btn" class="icon-glass-btn">
+                    <button id="leave-room-btn" class="icon-glass-btn" title="Back to Lobby">
                         <i class="fas fa-arrow-left"></i>
                     </button>
                     <div class="room-info">
@@ -138,16 +158,43 @@
                         </div>
                         <p class="room-user" id="current-user-email"></p>
                     </div>
-                    <button id="logout-btn-chat" class="icon-glass-btn">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
+                    <div class="header-actions">
+                        <button id="share-room-btn" class="icon-glass-btn" title="Copy Invite Link">
+                            <i class="fas fa-link"></i>
+                        </button>
+                        <button id="sound-toggle-btn" class="icon-glass-btn" title="Toggle Sound">
+                            <i class="fas fa-volume-up"></i>
+                        </button>
+                        <button id="toggle-sidebar-btn" class="icon-glass-btn mobile-only-btn" title="Online Members">
+                            <i class="fas fa-users"></i>
+                            <span id="mobile-online-badge" class="badge-dot"></span>
+                        </button>
+                        <button id="logout-btn-chat" class="icon-glass-btn" title="Logout">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Messages Area -->
                 <div id="messages-container" class="messages-area">
                     <div class="messages-wrapper" id="messages-wrapper">
-                        <!-- Messages will be dynamically inserted here -->
+                        <!-- Messages dynamically rendered here -->
                     </div>
+
+                    <!-- Drag and Drop Image Overlay -->
+                    <div id="drag-overlay" class="drag-overlay hidden">
+                        <div class="drag-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <h3>Drop image to upload</h3>
+                            <p>Supports PNG, JPG, GIF up to 5MB</p>
+                        </div>
+                    </div>
+
+                    <!-- Floating Scroll-To-Bottom Button -->
+                    <button id="scroll-bottom-btn" class="scroll-bottom-btn hidden" title="Scroll to bottom">
+                        <i class="fas fa-chevron-down"></i>
+                        <span id="scroll-badge" class="scroll-badge hidden"></span>
+                    </button>
                 </div>
 
                 <!-- Input Area -->
@@ -159,12 +206,12 @@
                     </div>
 
                     <div class="input-glass-wrapper">
-                        <label for="image-upload-input" class="upload-btn" title="Send Image">
+                        <label for="image-upload-input" class="upload-btn" title="Send Image (or Paste Ctrl+V)">
                             <i class="fas fa-image"></i>
                         </label>
                         <input type="file" id="image-upload-input" accept="image/*" class="hidden" style="display:none;">
-                        <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off">
-                        <button id="send-btn" class="send-glow-btn">
+                        <textarea id="message-input" placeholder="Type a message... (Shift+Enter for newline, Ctrl+V to paste image)" rows="1" autocomplete="off"></textarea>
+                        <button id="send-btn" class="send-glow-btn" title="Send (Enter)">
                             <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
@@ -172,9 +219,10 @@
             </div> <!-- End Chat Main Column -->
 
             <!-- Online Users Sidebar -->
-            <div class="chat-sidebar-glass">
+            <div id="chat-sidebar" class="chat-sidebar-glass">
                 <div class="sidebar-header">
                     <h3><i class="fas fa-users"></i> <span id="online-count">0 Online</span></h3>
+                    <button id="close-sidebar-btn" class="icon-glass-btn mobile-only-btn" title="Close"><i class="fas fa-times"></i></button>
                 </div>
                 <ul id="online-users-list" class="online-users-list">
                     <!-- Dynamic user list -->
@@ -183,6 +231,19 @@
             
         </div>
     </div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="image-lightbox" class="lightbox-modal hidden">
+        <div class="lightbox-backdrop"></div>
+        <div class="lightbox-content">
+            <button id="lightbox-close" class="lightbox-btn close-btn" title="Close (Esc)"><i class="fas fa-times"></i></button>
+            <a id="lightbox-download" class="lightbox-btn download-btn" download="nebula-image.png" target="_blank" title="Download Image"><i class="fas fa-download"></i></a>
+            <img id="lightbox-img" src="" alt="Enlarged preview">
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- Loading Overlay -->
     <div id="loading-overlay" class="loading-overlay hidden">
@@ -205,7 +266,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
     <!-- Main Application Script -->
-    <script src="script.js?v=12"></script>
+    <script src="script.js?v=13"></script>
 </body>
 
 </html>
