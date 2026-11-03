@@ -2195,6 +2195,112 @@
         if (leaveRoomBtn) leaveRoomBtn.addEventListener('click', leaveRoom);
         if (logoutBtnChat) logoutBtnChat.addEventListener('click', handleLogout);
 
+        // Mobile Kebab Menu Listeners
+        const mobileOverflowBtn = document.getElementById('mobile-overflow-btn');
+        const mobileOverflowMenu = document.getElementById('mobile-overflow-menu');
+        const mobileMenuShare = document.getElementById('mobile-menu-share');
+        const mobileMenuSound = document.getElementById('mobile-menu-sound');
+        const mobileMenuBurn = document.getElementById('mobile-menu-burn');
+        const mobileMenuLogout = document.getElementById('mobile-menu-logout');
+        const mobileSoundText = document.getElementById('mobile-sound-text');
+
+        if (mobileOverflowBtn && mobileOverflowMenu) {
+            mobileOverflowBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mobileOverflowMenu.classList.toggle('hidden');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#mobile-menu-wrapper')) {
+                    mobileOverflowMenu.classList.add('hidden');
+                }
+            });
+        }
+
+        if (mobileMenuShare && shareRoomBtn) {
+            mobileMenuShare.addEventListener('click', () => {
+                if (mobileOverflowMenu) mobileOverflowMenu.classList.add('hidden');
+                shareRoomBtn.click();
+            });
+        }
+
+        if (mobileMenuSound && soundToggleBtn) {
+            mobileMenuSound.addEventListener('click', () => {
+                soundToggleBtn.click();
+                if (mobileSoundText) {
+                    mobileSoundText.textContent = isSoundMuted ? 'Unmute Sound' : 'Mute Sound';
+                }
+                if (mobileOverflowMenu) mobileOverflowMenu.classList.add('hidden');
+            });
+        }
+
+        if (mobileMenuBurn) {
+            mobileMenuBurn.addEventListener('click', () => {
+                if (mobileOverflowMenu) mobileOverflowMenu.classList.add('hidden');
+                if (burnRoomModal) burnRoomModal.classList.remove('hidden');
+            });
+        }
+
+        if (mobileMenuLogout) {
+            mobileMenuLogout.addEventListener('click', () => {
+                if (mobileOverflowMenu) mobileOverflowMenu.classList.add('hidden');
+                handleLogout();
+            });
+        }
+
+        // Mobile Sidebar Drawer & Backdrop
+        const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        if (toggleSidebarBtn && chatSidebar) {
+            toggleSidebarBtn.addEventListener('click', () => {
+                const isOpen = chatSidebar.classList.contains('sidebar-open');
+                if (sidebarBackdrop) {
+                    sidebarBackdrop.classList.toggle('hidden', isOpen);
+                }
+            });
+        }
+        if (closeSidebarBtn && chatSidebar) {
+            closeSidebarBtn.addEventListener('click', () => {
+                chatSidebar.classList.remove('sidebar-open');
+                if (sidebarBackdrop) sidebarBackdrop.classList.add('hidden');
+            });
+        }
+        if (sidebarBackdrop && chatSidebar) {
+            sidebarBackdrop.addEventListener('click', () => {
+                chatSidebar.classList.remove('sidebar-open');
+                sidebarBackdrop.classList.add('hidden');
+            });
+        }
+
+        // Mobile Touch Tap to Reveal Message Actions
+        if (messagesWrapper) {
+            messagesWrapper.addEventListener('click', (e) => {
+                const bubble = e.target.closest('.message-bubble');
+                if (!bubble) return;
+                const msg = bubble.closest('.message');
+                if (!msg || msg.classList.contains('pending')) return;
+                if (e.target.closest('.action-btn') || e.target.closest('.emoji-picker-popup') || e.target.closest('.reaction-pill') || e.target.closest('.message-image')) {
+                    return;
+                }
+                const wasVisible = msg.classList.contains('actions-visible');
+                document.querySelectorAll('.message.actions-visible').forEach(m => m.classList.remove('actions-visible'));
+                if (!wasVisible) {
+                    msg.classList.add('actions-visible');
+                }
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.message-bubble')) {
+                    document.querySelectorAll('.message.actions-visible').forEach(m => m.classList.remove('actions-visible'));
+                }
+            });
+        }
+
+        // Smooth Mobile Keyboard Adjustment
+        if (messageInput) {
+            messageInput.addEventListener('focus', () => {
+                setTimeout(() => scrollToBottom(true), 260);
+            });
+        }
+
         window.addEventListener('beforeunload', () => {
             leaveRoomCleanup();
         });

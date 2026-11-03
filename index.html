@@ -3,8 +3,11 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nebula | Real-time Secure Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Nebula 19 | Zero-Trace Secure Chat</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
     <!-- Performance: Resource Hints & Preconnects -->
@@ -223,22 +226,47 @@
                         <button id="panic-mode-btn" class="icon-glass-btn stealth-glow-btn" title="Stealth Cloak (Esc) - Instantly disguise as Calculator">
                             <i class="fas fa-user-secret"></i>
                         </button>
-                        <button id="burn-room-btn" class="icon-glass-btn danger-hover-btn" title="Burn Room - Permanently wipe all messages">
+                        <button id="burn-room-btn" class="icon-glass-btn danger-hover-btn desktop-action-btn" title="Burn Room - Permanently wipe all messages">
                             <i class="fas fa-fire-alt"></i>
                         </button>
-                        <button id="share-room-btn" class="icon-glass-btn" title="Copy Invite Link">
+                        <button id="share-room-btn" class="icon-glass-btn desktop-action-btn" title="Copy Invite Link">
                             <i class="fas fa-link"></i>
                         </button>
-                        <button id="sound-toggle-btn" class="icon-glass-btn" title="Toggle Sound">
+                        <button id="sound-toggle-btn" class="icon-glass-btn desktop-action-btn" title="Toggle Sound">
                             <i class="fas fa-volume-up"></i>
                         </button>
-                        <button id="toggle-sidebar-btn" class="icon-glass-btn mobile-only-btn" title="Online Members">
+                        <button id="toggle-sidebar-btn" class="icon-glass-btn" title="Online Members">
                             <i class="fas fa-users"></i>
                             <span id="mobile-online-badge" class="badge-dot"></span>
                         </button>
-                        <button id="logout-btn-chat" class="icon-glass-btn" title="Logout">
+                        <button id="logout-btn-chat" class="icon-glass-btn desktop-action-btn" title="Logout">
                             <i class="fas fa-sign-out-alt"></i>
                         </button>
+
+                        <!-- Mobile Kebab Dropdown Menu -->
+                        <div class="mobile-menu-wrapper mobile-only-btn" id="mobile-menu-wrapper">
+                            <button id="mobile-overflow-btn" class="icon-glass-btn" title="More Options">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <div id="mobile-overflow-menu" class="mobile-overflow-menu hidden">
+                                <button type="button" id="mobile-menu-share" class="mobile-menu-item">
+                                    <i class="fas fa-link"></i>
+                                    <span>Copy Invite Link</span>
+                                </button>
+                                <button type="button" id="mobile-menu-sound" class="mobile-menu-item">
+                                    <i class="fas fa-volume-up"></i>
+                                    <span id="mobile-sound-text">Toggle Sound</span>
+                                </button>
+                                <button type="button" id="mobile-menu-burn" class="mobile-menu-item danger-item">
+                                    <i class="fas fa-fire-alt"></i>
+                                    <span>Burn Room</span>
+                                </button>
+                                <button type="button" id="mobile-menu-logout" class="mobile-menu-item">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                    <span>Logout</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -327,6 +355,9 @@
                     <!-- Dynamic user list -->
                 </ul>
             </div>
+            
+            <!-- Mobile Sidebar Backdrop Overlay -->
+            <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
             
         </div>
     </div>
