@@ -164,10 +164,26 @@
                                 <span class="pulse-dot"></span>
                                 <span class="live-text">LIVE</span>
                             </span>
+                            <span class="e2e-badge" title="End-to-End Encrypted (AES-256-GCM via Room Secret Key)">
+                                <i class="fas fa-shield-alt"></i>
+                                <span>E2EE</span>
+                            </span>
+                            <div class="eq-bars" title="Encrypted Stream Active">
+                                <span class="eq-bar"></span>
+                                <span class="eq-bar"></span>
+                                <span class="eq-bar"></span>
+                                <span class="eq-bar"></span>
+                            </div>
                         </div>
                         <p class="room-user" id="current-user-email"></p>
                     </div>
                     <div class="header-actions">
+                        <button id="panic-mode-btn" class="icon-glass-btn stealth-glow-btn" title="Stealth Cloak (Esc) - Instantly disguise as Calculator">
+                            <i class="fas fa-user-secret"></i>
+                        </button>
+                        <button id="burn-room-btn" class="icon-glass-btn danger-hover-btn" title="Burn Room - Permanently wipe all messages">
+                            <i class="fas fa-fire-alt"></i>
+                        </button>
                         <button id="share-room-btn" class="icon-glass-btn" title="Copy Invite Link">
                             <i class="fas fa-link"></i>
                         </button>
@@ -221,6 +237,32 @@
                     </div>
 
                     <div class="input-glass-wrapper">
+                        <!-- Auto-Burn Ephemeral Timer Control -->
+                        <div class="burn-timer-control" id="burn-timer-control">
+                            <button id="burn-timer-btn" class="burn-timer-btn" type="button" title="Self-Destruct Timer (Auto-burn messages)">
+                                <i class="fas fa-fire"></i>
+                                <span id="burn-timer-label">Off</span>
+                            </button>
+                            <div id="burn-timer-menu" class="burn-timer-menu hidden">
+                                <div class="burn-menu-title">Self-Destruct Timer</div>
+                                <button type="button" class="burn-menu-item active" data-burn="0">
+                                    <i class="fas fa-infinity"></i> Off (Keep)
+                                </button>
+                                <button type="button" class="burn-menu-item" data-burn="30">
+                                    <i class="fas fa-stopwatch"></i> 30 Seconds
+                                </button>
+                                <button type="button" class="burn-menu-item" data-burn="300">
+                                    <i class="fas fa-hourglass-half"></i> 5 Minutes
+                                </button>
+                                <button type="button" class="burn-menu-item" data-burn="3600">
+                                    <i class="fas fa-clock"></i> 1 Hour
+                                </button>
+                                <button type="button" class="burn-menu-item" data-burn="86400">
+                                    <i class="fas fa-calendar-day"></i> 24 Hours
+                                </button>
+                            </div>
+                        </div>
+
                         <label for="image-upload-input" class="upload-btn" title="Send Image (or Paste Ctrl+V)">
                             <i class="fas fa-image"></i>
                         </label>
@@ -257,6 +299,73 @@
         </div>
     </div>
 
+    <!-- Burn Room Wipe Modal -->
+    <div id="burn-room-modal" class="custom-modal hidden">
+        <div class="modal-backdrop" id="burn-modal-backdrop"></div>
+        <div class="modal-box glass-card burn-modal-card">
+            <div class="burn-modal-icon">
+                <i class="fas fa-radiation-alt"></i>
+            </div>
+            <h3>Burn Room & Wipe History?</h3>
+            <p>This action will permanently delete every single message and image in this room. Decryption keys and chat logs cannot be recovered.</p>
+            <div class="modal-actions">
+                <button id="cancel-burn-btn" class="glass-button secondary-btn" type="button">Cancel</button>
+                <button id="confirm-burn-btn" class="glass-button danger-btn" type="button">
+                    <i class="fas fa-fire"></i> Yes, Wipe Everything
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stealth Cloak Disguise Window (Realistic Interactive Calculator) -->
+    <div id="disguise-overlay" class="disguise-overlay hidden">
+        <div class="disguise-calc-card">
+            <div class="calc-header-bar">
+                <div class="calc-header-left">
+                    <i class="fas fa-calculator calc-app-icon"></i>
+                    <span class="calc-header-title">Calculator</span>
+                </div>
+                <div class="calc-window-actions">
+                    <button type="button" class="calc-win-btn win-min" title="Minimize">−</button>
+                    <button type="button" class="calc-win-btn win-max" title="Maximize">□</button>
+                    <button type="button" id="calc-close-stealth-btn" class="calc-win-btn win-close" title="Close (Esc to exit disguise)">✕</button>
+                </div>
+            </div>
+            <div class="calc-display-section">
+                <div id="calc-history-view" class="calc-history-text"></div>
+                <div id="calc-result-view" class="calc-result-text">0</div>
+            </div>
+            <div class="calc-grid">
+                <button type="button" class="calc-btn btn-top" data-calc="clear">C</button>
+                <button type="button" class="calc-btn btn-top" data-calc="back"><i class="fas fa-backspace"></i></button>
+                <button type="button" class="calc-btn btn-top" data-calc="%">%</button>
+                <button type="button" class="calc-btn btn-operator" data-calc="/">÷</button>
+
+                <button type="button" class="calc-btn" data-calc="7">7</button>
+                <button type="button" class="calc-btn" data-calc="8">8</button>
+                <button type="button" class="calc-btn" data-calc="9">9</button>
+                <button type="button" class="calc-btn btn-operator" data-calc="*">×</button>
+
+                <button type="button" class="calc-btn" data-calc="4">4</button>
+                <button type="button" class="calc-btn" data-calc="5">5</button>
+                <button type="button" class="calc-btn" data-calc="6">6</button>
+                <button type="button" class="calc-btn btn-operator" data-calc="-">−</button>
+
+                <button type="button" class="calc-btn" data-calc="1">1</button>
+                <button type="button" class="calc-btn" data-calc="2">2</button>
+                <button type="button" class="calc-btn" data-calc="3">3</button>
+                <button type="button" class="calc-btn btn-operator" data-calc="+">+</button>
+
+                <button type="button" class="calc-btn btn-zero" data-calc="0">0</button>
+                <button type="button" class="calc-btn" data-calc=".">.</button>
+                <button type="button" class="calc-btn btn-equals" data-calc="=">=</button>
+            </div>
+            <div class="calc-stealth-footer">
+                <span class="stealth-hint-text">Standard Mode &bull; Press <kbd>Esc</kbd> or <kbd>✕</kbd> to unlock</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notifications Container -->
     <div id="toast-container" class="toast-container"></div>
 
@@ -281,7 +390,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
     <!-- Main Application Script -->
-    <script src="script.js?v=15"></script>
+    <script src="script.js"></script>
 </body>
 
 </html>

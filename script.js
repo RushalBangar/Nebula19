@@ -57,6 +57,13 @@
     let typingIndicator, typingUserText, onlineUsersList, onlineCount;
     let imageLightbox, lightboxImg, lightboxClose, lightboxDownload;
 
+    // Stealth Cloak, E2EE, Ephemeral & Disguise Elements
+    let panicModeBtn, burnRoomBtn;
+    let burnRoomModal, cancelBurnBtn, confirmBurnBtn, burnModalBackdrop;
+    let burnTimerControl, burnTimerBtn, burnTimerMenu, burnTimerLabel;
+    let disguiseOverlay, calcCloseStealthBtn, calcHistoryView, calcResultView;
+    let selectedBurnSeconds = 0;
+
     function cacheDOMElements() {
         authScreen = document.getElementById('auth-screen');
         lobbyScreen = document.getElementById('lobby-screen');
@@ -113,6 +120,21 @@
         lightboxImg = document.getElementById('lightbox-img');
         lightboxClose = document.getElementById('lightbox-close');
         lightboxDownload = document.getElementById('lightbox-download');
+
+        panicModeBtn = document.getElementById('panic-mode-btn');
+        burnRoomBtn = document.getElementById('burn-room-btn');
+        burnRoomModal = document.getElementById('burn-room-modal');
+        cancelBurnBtn = document.getElementById('cancel-burn-btn');
+        confirmBurnBtn = document.getElementById('confirm-burn-btn');
+        burnModalBackdrop = document.getElementById('burn-modal-backdrop');
+        burnTimerControl = document.getElementById('burn-timer-control');
+        burnTimerBtn = document.getElementById('burn-timer-btn');
+        burnTimerMenu = document.getElementById('burn-timer-menu');
+        burnTimerLabel = document.getElementById('burn-timer-label');
+        disguiseOverlay = document.getElementById('disguise-overlay');
+        calcCloseStealthBtn = document.getElementById('calc-close-stealth-btn');
+        calcHistoryView = document.getElementById('calc-history-view');
+        calcResultView = document.getElementById('calc-result-view');
     }
 
     // =====================================================
@@ -373,6 +395,345 @@
         if (!imageLightbox) return;
         imageLightbox.classList.add('hidden');
         if (lightboxImg) lightboxImg.src = '';
+    }
+
+    // =====================================================
+    // Zero-Knowledge End-to-End Encryption (E2EE)
+    // AES-256-GCM + PBKDF2 derived from Room Secret Code
+    // =====================================================
+    const roomKeyCache = new Map();
+    const decryptedCache = new Map();
+
+    async function getRoomKey(roomCode) {
+        const cleanCode = (roomCode || '').trim().toUpperCase();
+        if (!cleanCode) return null;
+        if (roomKeyCache.has(cleanCode)) {
+            return roomKeyCache.get(cleanCode);
+        }
+        if (!window.crypto || !window.crypto.subtle) return null;
+        try {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw",
+                enc.encode(cleanCode),
+                "PBKDF2",
+                false,
+                ["deriveKey"]
+            );
+            const salt = enc.encode("nebula19-salt-v1");
+            const key = await window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: salt,
+                    iterations: 100000,
+                    hash: "SHA-256"
+                },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+            roomKeyCache.set(cleanCode, key);
+            return key;
+        } catch (err) {
+            console.error("Failed to derive room key:", err);
+            return null;
+        }
+    }
+
+    async function encryptText(plainText, roomCode) {
+        if (!plainText || !window.crypto || !window.crypto.subtle) return plainText;
+        try {
+            const key = await getRoomKey(roomCode);
+            if (!key) return plainText;
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const enc = new TextEncoder();
+            const encryptedBuf = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv },
+                key,
+                enc.encode(plainText)
+            );
+            const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+            const cipherHex = Array.from(new Uint8Array(encryptedBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const ciphertext = `e2e:${ivHex}:${cipherHex}`;
+            decryptedCache.set(ciphertext, plainText);
+            return ciphertext;
+        } catch (err) {
+            console.warn("Encryption failed, sending as fallback:", err);
+            return plainText;
+        }
+    }
+
+    async function decryptText(payload, roomCode) {
+        if (typeof payload !== 'string' || !payload.startsWith('e2e:')) {
+            return payload; // Plain text or legacy
+        }
+        if (decryptedCache.has(payload)) {
+            return decryptedCache.get(payload);
+        }
+        if (!window.crypto || !window.crypto.subtle) return payload;
+        try {
+            const parts = payload.split(':');
+            if (parts.length !== 3) return payload;
+            const ivHex = parts[1];
+            const cipherHex = parts[2];
+            const ivMatches = ivHex.match(/.{1,2}/g);
+            const cipherMatches = cipherHex.match(/.{1,2}/g);
+            if (!ivMatches || !cipherMatches) return payload;
+
+            const iv = new Uint8Array(ivMatches.map(byte => parseInt(byte, 16)));
+            const ciphertext = new Uint8Array(cipherMatches.map(byte => parseInt(byte, 16)));
+            const key = await getRoomKey(roomCode);
+            if (!key) return payload;
+
+            const decryptedBuf = await window.crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: iv },
+                key,
+                ciphertext
+            );
+            const dec = new TextDecoder();
+            const decryptedString = dec.decode(decryptedBuf);
+            decryptedCache.set(payload, decryptedString);
+            return decryptedString;
+        } catch (err) {
+            console.warn("Decryption failed (room key mismatch):", err);
+            return "🔒 [Encrypted message - Room key mismatch]";
+        }
+    }
+
+    // =====================================================
+    // Ephemeral / Self-Destruct Timers (Auto-Burn)
+    // =====================================================
+    const activeBurnIntervals = new Map();
+
+    function formatBurnCountdown(seconds) {
+        if (seconds < 60) return `${seconds}s`;
+        if (seconds < 3600) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}m ${s}s`;
+        }
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        return `${h}h ${m}m`;
+    }
+
+    function setupMessageBurnTimer(msgId, expiresAt) {
+        if (!msgId || !expiresAt) return;
+        if (activeBurnIntervals.has(msgId)) {
+            clearInterval(activeBurnIntervals.get(msgId));
+        }
+
+        const tick = () => {
+            const now = Date.now();
+            const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+            const badge = document.getElementById(`burn-${msgId}`);
+            if (remaining <= 0) {
+                if (activeBurnIntervals.has(msgId)) {
+                    clearInterval(activeBurnIntervals.get(msgId));
+                    activeBurnIntervals.delete(msgId);
+                }
+                const msgEl = document.querySelector(`.message[data-msg-id="${msgId}"]`);
+                if (msgEl) {
+                    msgEl.classList.add('smoke-out');
+                    setTimeout(() => {
+                        if (msgEl.parentNode) msgEl.remove();
+                        checkEmptyState();
+                    }, 600);
+                }
+                // Wipe from Firestore so no trace is left
+                if (db && currentRoomCode) {
+                    db.collection('rooms').doc(currentRoomCode).collection('messages').doc(msgId).delete().catch(() => {});
+                }
+            } else if (badge) {
+                const valEl = badge.querySelector('.countdown-val');
+                if (valEl) valEl.textContent = formatBurnCountdown(remaining);
+            }
+        };
+
+        const intervalId = setInterval(tick, 1000);
+        activeBurnIntervals.set(msgId, intervalId);
+        tick();
+    }
+
+    // =====================================================
+    // Room Wipe (Burn Room) Action
+    // =====================================================
+    async function burnRoom() {
+        if (!currentRoomCode) return;
+        if (!db) {
+            showToast('Database not connected.', 'error');
+            return;
+        }
+
+        showLoading();
+        try {
+            const messagesRef = db.collection('rooms').doc(currentRoomCode).collection('messages');
+            const snapshot = await messagesRef.limit(500).get();
+
+            if (snapshot.empty) {
+                hideLoading();
+                showToast('Room is already clean.', 'info');
+                if (burnRoomModal) burnRoomModal.classList.add('hidden');
+                return;
+            }
+
+            const batch = db.batch();
+            snapshot.docs.forEach(docSnap => {
+                batch.delete(docSnap.ref);
+            });
+            await batch.commit();
+
+            hideLoading();
+            if (burnRoomModal) burnRoomModal.classList.add('hidden');
+
+            if (messagesWrapper) {
+                messagesWrapper.classList.add('smoke-out');
+                setTimeout(() => {
+                    messagesWrapper.innerHTML = '';
+                    messagesWrapper.classList.remove('smoke-out');
+                    checkEmptyState();
+                }, 600);
+            }
+
+            showToast('🔥 Room burned. All messages wiped permanently.', 'success', 4000);
+        } catch (err) {
+            hideLoading();
+            console.error('Failed to wipe room:', err);
+            showToast('Failed to wipe room: ' + err.message, 'error');
+        }
+    }
+
+    // =====================================================
+    // Stealth Cloak Camouflage & Realistic Calculator Mode
+    // =====================================================
+    let isStealthActive = false;
+    let originalTitle = document.title;
+    let calcCurrent = '0';
+    let calcPrevious = '';
+    let calcOp = null;
+    let calcResetDisplay = false;
+
+    function toggleStealthMode(forceState) {
+        if (!disguiseOverlay) return;
+        isStealthActive = typeof forceState === 'boolean' ? forceState : !isStealthActive;
+
+        if (isStealthActive) {
+            disguiseOverlay.classList.remove('hidden');
+            originalTitle = document.title;
+            document.title = 'Calculator';
+            resetCalculator();
+        } else {
+            disguiseOverlay.classList.add('hidden');
+            document.title = originalTitle || 'Nebula | Real-time Secure Chat';
+        }
+    }
+
+    function resetCalculator() {
+        calcCurrent = '0';
+        calcPrevious = '';
+        calcOp = null;
+        calcResetDisplay = false;
+        updateCalcUI();
+    }
+
+    function updateCalcUI() {
+        if (calcResultView) calcResultView.textContent = calcCurrent;
+        if (calcHistoryView) calcHistoryView.textContent = calcPrevious + (calcOp ? ` ${calcOp}` : '');
+    }
+
+    function handleCalculatorAction(action) {
+        if (!action) return;
+
+        if (action >= '0' && action <= '9') {
+            if (calcCurrent === '0' || calcResetDisplay) {
+                calcCurrent = action;
+                calcResetDisplay = false;
+            } else {
+                if (calcCurrent.length < 14) calcCurrent += action;
+            }
+            updateCalcUI();
+            return;
+        }
+
+        if (action === '.') {
+            if (calcResetDisplay) {
+                calcCurrent = '0.';
+                calcResetDisplay = false;
+            } else if (!calcCurrent.includes('.')) {
+                calcCurrent += '.';
+            }
+            updateCalcUI();
+            return;
+        }
+
+        if (action === 'clear') {
+            resetCalculator();
+            return;
+        }
+
+        if (action === 'back') {
+            if (calcCurrent.length > 1) {
+                calcCurrent = calcCurrent.slice(0, -1);
+            } else {
+                calcCurrent = '0';
+            }
+            updateCalcUI();
+            return;
+        }
+
+        if (action === '%') {
+            const val = parseFloat(calcCurrent);
+            if (!isNaN(val)) {
+                calcCurrent = String(val / 100);
+                updateCalcUI();
+            }
+            return;
+        }
+
+        if (['+', '-', '*', '/'].includes(action)) {
+            if (calcOp && !calcResetDisplay) {
+                calculateResult();
+            }
+            calcPrevious = calcCurrent;
+            calcOp = action;
+            calcResetDisplay = true;
+            updateCalcUI();
+            return;
+        }
+
+        if (action === '=') {
+            // Secret unlock code: typing 19 and pressing = unlocks chat!
+            if (calcCurrent === '19' || calcPrevious === '19') {
+                toggleStealthMode(false);
+                showToast('Stealth Cloak deactivated', 'info', 2000);
+                return;
+            }
+
+            if (calcOp && calcPrevious) {
+                calculateResult();
+                calcPrevious = '';
+                calcOp = null;
+                calcResetDisplay = true;
+                updateCalcUI();
+            }
+        }
+    }
+
+    function calculateResult() {
+        const prev = parseFloat(calcPrevious);
+        const curr = parseFloat(calcCurrent);
+        if (isNaN(prev) || isNaN(curr)) return;
+
+        let result = 0;
+        switch (calcOp) {
+            case '+': result = prev + curr; break;
+            case '-': result = prev - curr; break;
+            case '*': result = prev * curr; break;
+            case '/': result = curr !== 0 ? prev / curr : 'Error'; break;
+        }
+
+        calcCurrent = typeof result === 'number' ? (Math.round(result * 1000000) / 1000000).toString() : result;
     }
 
     // =====================================================
@@ -945,6 +1306,8 @@
         messageInput.style.height = 'auto';
 
         const tempId = 'optimistic_' + Date.now();
+        const burnSeconds = selectedBurnSeconds;
+        const expiresAt = burnSeconds > 0 ? (Date.now() + (burnSeconds * 1000)) : null;
 
         // 0ms Optimistic UI render
         const optimisticMsg = {
@@ -957,8 +1320,13 @@
             reactions: {},
             is_deleted: false,
             created_at: new Date(),
-            isPending: true
+            isPending: true,
+            burn_seconds: burnSeconds,
+            expires_at: expiresAt
         };
+
+        // Cache decrypted value so sender immediately sees plain text
+        decryptedCache.set(content, content);
 
         displayMessage(optimisticMsg);
         scrollToBottom(true);
@@ -969,17 +1337,28 @@
         }
 
         try {
-            const docRef = await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
+            // End-to-End Encrypt message content with room key
+            const encryptedContent = await encryptText(content, currentRoomCode);
+            decryptedCache.set(encryptedContent, content);
+
+            const docPayload = {
                 room_code: currentRoomCode,
                 user_email: currentUser.email,
                 user_id: currentUser.uid,
-                content: content,
+                content: encryptedContent,
                 image_url: null,
                 reactions: {},
                 is_deleted: false,
                 created_at: firebase.firestore.FieldValue.serverTimestamp(),
                 edited_at: null
-            });
+            };
+
+            if (burnSeconds > 0 && expiresAt) {
+                docPayload.burn_seconds = burnSeconds;
+                docPayload.expires_at = expiresAt;
+            }
+
+            const docRef = await db.collection('rooms').doc(currentRoomCode).collection('messages').add(docPayload);
 
             // Smoothly upgrade optimistic element ID to actual Firestore doc ID
             const pendingElement = document.querySelector(`.message[data-msg-id="${tempId}"]`);
@@ -989,8 +1368,12 @@
                 const clock = pendingElement.querySelector('.fa-clock');
                 if (clock) {
                     clock.className = 'fas fa-check read-receipt-icon';
-                    clock.title = 'Sent';
+                    clock.title = 'Sent (Encrypted)';
                 }
+            }
+
+            if (expiresAt) {
+                setupMessageBurnTimer(docRef.id, expiresAt);
             }
         } catch (error) {
             console.error('Error sending message:', error);
@@ -1023,7 +1406,10 @@
             const uploadSnapshot = await imageStorageRef.put(compressed);
             const downloadUrl = await uploadSnapshot.ref.getDownloadURL();
 
-            await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
+            const burnSeconds = selectedBurnSeconds;
+            const expiresAt = burnSeconds > 0 ? (Date.now() + (burnSeconds * 1000)) : null;
+
+            const docPayload = {
                 room_code: currentRoomCode,
                 user_email: currentUser.email,
                 user_id: currentUser.uid,
@@ -1033,7 +1419,18 @@
                 is_deleted: false,
                 created_at: firebase.firestore.FieldValue.serverTimestamp(),
                 edited_at: null
-            });
+            };
+
+            if (burnSeconds > 0 && expiresAt) {
+                docPayload.burn_seconds = burnSeconds;
+                docPayload.expires_at = expiresAt;
+            }
+
+            const docRef = await db.collection('rooms').doc(currentRoomCode).collection('messages').add(docPayload);
+
+            if (expiresAt) {
+                setupMessageBurnTimer(docRef.id, expiresAt);
+            }
 
             showToast('Image uploaded!', 'success');
         } catch (err) {
@@ -1049,6 +1446,13 @@
     }
 
     function buildMessageNodes(message, containerNode) {
+        if (message.expires_at && Date.now() >= message.expires_at) {
+            if (db && currentRoomCode && message.id && !message.id.startsWith('optimistic_')) {
+                db.collection('rooms').doc(currentRoomCode).collection('messages').doc(message.id).delete().catch(() => {});
+            }
+            return;
+        }
+
         const msgDate = parseTimestamp(message.created_at);
         const msgDateStr = msgDate.toDateString();
 
@@ -1067,16 +1471,40 @@
         lastRenderedTimestamp = msgTime;
 
         const messageEl = createMessageDOMElement(message, isConsecutive);
-        containerNode.appendChild(messageEl);
+        if (messageEl) {
+            containerNode.appendChild(messageEl);
+            if (message.expires_at && !message.is_deleted) {
+                setupMessageBurnTimer(message.id, message.expires_at);
+            }
+        }
     }
 
     function createMessageDOMElement(message, isConsecutive = false) {
+        // Drop already expired messages
+        if (message.expires_at && Date.now() >= message.expires_at) {
+            if (db && currentRoomCode && message.id && !message.id.startsWith('optimistic_')) {
+                db.collection('rooms').doc(currentRoomCode).collection('messages').doc(message.id).delete().catch(() => {});
+            }
+            return null;
+        }
+
         const messageDiv = document.createElement('div');
         const isMine = currentUser && (message.user_email === currentUser.email || message.user_id === currentUser.uid);
         const avatarUrl = getAvatarUrl(message.user_email);
 
         const rawContent = message.content || '';
-        const escapedContent = escapeHtml(rawContent);
+        let initialContent = rawContent;
+        const isEncrypted = typeof rawContent === 'string' && rawContent.startsWith('e2e:');
+
+        if (isEncrypted) {
+            if (decryptedCache.has(rawContent)) {
+                initialContent = decryptedCache.get(rawContent);
+            } else {
+                initialContent = '🔒 Decrypting...';
+            }
+        }
+
+        const escapedContent = escapeHtml(initialContent);
         const linkedContent = linkifyText(escapedContent);
         const finalContent = message.is_deleted ? '<em>This message was deleted</em>' : parseMarkdown(linkedContent);
 
@@ -1084,7 +1512,7 @@
 
         messageDiv.className = `message ${isMine ? 'mine' : 'others'} ${isConsecutive ? 'grouped' : ''} ${isPending ? 'pending' : ''}`;
         messageDiv.setAttribute('data-msg-id', message.id);
-        messageDiv.setAttribute('data-content', rawContent);
+        messageDiv.setAttribute('data-content', initialContent);
         messageDiv.setAttribute('data-sender', message.user_email || '');
 
         let actionsHtml = '';
@@ -1130,6 +1558,15 @@
 
         const editedTag = message.edited_at ? '<span class="edited-tag">(edited)</span>' : '';
 
+        let burnBadgeHtml = '';
+        if (message.expires_at && !message.is_deleted) {
+            const now = Date.now();
+            const remaining = Math.max(0, Math.floor((message.expires_at - now) / 1000));
+            if (remaining > 0) {
+                burnBadgeHtml = `<span class="burn-countdown-badge" id="burn-${message.id}"><i class="fas fa-fire"></i> <span class="countdown-val">${formatBurnCountdown(remaining)}</span></span>`;
+            }
+        }
+
         let readReceiptHtml = '';
         if (isMine && !message.is_deleted) {
             if (isPending) {
@@ -1153,16 +1590,35 @@
                     ${imageHtml}
                     <div class="message-content">${finalContent}</div>
                     ${reactionsHtml}
-                    <div class="message-time">${formatTime(message.created_at)}${editedTag}${readReceiptHtml}</div>
+                    <div class="message-time">${formatTime(message.created_at)}${editedTag}${burnBadgeHtml}${readReceiptHtml}</div>
                 </div>
             </div>
         `;
+
+        if (isEncrypted && !decryptedCache.has(rawContent)) {
+            decryptText(rawContent, currentRoomCode).then(decrypted => {
+                const contentEl = messageDiv.querySelector('.message-content');
+                if (contentEl && !message.is_deleted) {
+                    const esc = escapeHtml(decrypted);
+                    const lnk = linkifyText(esc);
+                    contentEl.innerHTML = parseMarkdown(lnk);
+                }
+                messageDiv.setAttribute('data-content', decrypted);
+            });
+        }
 
         return messageDiv;
     }
 
     function displayMessage(message, isUpdate = false, insertBeforeNode = null) {
         if (!messagesWrapper) return;
+
+        if (message.expires_at && Date.now() >= message.expires_at) {
+            if (db && currentRoomCode && message.id && !message.id.startsWith('optimistic_')) {
+                db.collection('rooms').doc(currentRoomCode).collection('messages').doc(message.id).delete().catch(() => {});
+            }
+            return;
+        }
 
         const msgDate = parseTimestamp(message.created_at);
         const msgDateStr = msgDate.toDateString();
@@ -1192,11 +1648,16 @@
         }
 
         const messageDiv = createMessageDOMElement(message, isConsecutive);
+        if (!messageDiv) return;
 
         if (insertBeforeNode) {
             messagesWrapper.insertBefore(messageDiv, insertBeforeNode);
         } else {
             messagesWrapper.appendChild(messageDiv);
+        }
+
+        if (message.expires_at && !message.is_deleted) {
+            setupMessageBurnTimer(message.id, message.expires_at);
         }
 
         if (!isUpdate) checkEmptyState();
@@ -1557,8 +2018,105 @@
             const backdrop = imageLightbox.querySelector('.lightbox-backdrop');
             if (backdrop) backdrop.addEventListener('click', closeLightbox);
         }
+
+        // Stealth Cloak (Panic Mode) & Disguise Controls
+        if (panicModeBtn) {
+            panicModeBtn.addEventListener('click', () => toggleStealthMode(true));
+        }
+        if (calcCloseStealthBtn) {
+            calcCloseStealthBtn.addEventListener('click', () => toggleStealthMode(false));
+        }
+
+        document.querySelectorAll('.calc-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-calc');
+                handleCalculatorAction(action);
+            });
+        });
+
+        // Room Wipe (Burn Room) Modal Controls
+        if (burnRoomBtn) {
+            burnRoomBtn.addEventListener('click', () => {
+                if (burnRoomModal) burnRoomModal.classList.remove('hidden');
+            });
+        }
+        if (cancelBurnBtn) {
+            cancelBurnBtn.addEventListener('click', () => {
+                if (burnRoomModal) burnRoomModal.classList.add('hidden');
+            });
+        }
+        if (burnModalBackdrop) {
+            burnModalBackdrop.addEventListener('click', () => {
+                if (burnRoomModal) burnRoomModal.classList.add('hidden');
+            });
+        }
+        if (confirmBurnBtn) {
+            confirmBurnBtn.addEventListener('click', burnRoom);
+        }
+
+        // Auto-Burn Self-Destruct Timer Controls
+        if (burnTimerBtn) {
+            burnTimerBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (burnTimerMenu) burnTimerMenu.classList.toggle('hidden');
+            });
+        }
+
+        document.querySelectorAll('.burn-menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const sec = parseInt(item.getAttribute('data-burn') || '0', 10);
+                selectedBurnSeconds = sec;
+                document.querySelectorAll('.burn-menu-item').forEach(btn => btn.classList.remove('active'));
+                item.classList.add('active');
+                if (burnTimerBtn) {
+                    if (sec > 0) {
+                        burnTimerBtn.classList.add('active');
+                    } else {
+                        burnTimerBtn.classList.remove('active');
+                    }
+                }
+                if (burnTimerLabel) {
+                    if (sec === 0) burnTimerLabel.textContent = 'Off';
+                    else if (sec === 30) burnTimerLabel.textContent = '30s';
+                    else if (sec === 300) burnTimerLabel.textContent = '5m';
+                    else if (sec === 3600) burnTimerLabel.textContent = '1h';
+                    else if (sec === 86400) burnTimerLabel.textContent = '24h';
+                }
+                if (burnTimerMenu) burnTimerMenu.classList.add('hidden');
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (burnTimerMenu && !burnTimerMenu.classList.contains('hidden') && !e.target.closest('#burn-timer-control')) {
+                burnTimerMenu.classList.add('hidden');
+            }
+        });
+
+        // Global Esc Shortcut (Toggles Stealth Cloak / Closes Modals)
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeLightbox();
+            if (e.key === 'Escape') {
+                if (burnRoomModal && !burnRoomModal.classList.contains('hidden')) {
+                    burnRoomModal.classList.add('hidden');
+                    return;
+                }
+                if (imageLightbox && !imageLightbox.classList.contains('hidden')) {
+                    closeLightbox();
+                    return;
+                }
+                toggleStealthMode();
+            }
+        });
+
+        // Mouse Spotlight Glow Follower
+        document.addEventListener('mousemove', (e) => {
+            const container = document.querySelector('.chat-glass-container');
+            if (container) {
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                container.style.setProperty('--spotlight-x', `${x}px`);
+                container.style.setProperty('--spotlight-y', `${y}px`);
+            }
         });
 
         if (leaveRoomBtn) leaveRoomBtn.addEventListener('click', leaveRoom);
