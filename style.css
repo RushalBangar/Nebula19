@@ -615,6 +615,8 @@ body {
     font-size: 12px;
     font-weight: 600;
     margin-bottom: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
     padding: 0 14px;
     color: var(--text-secondary);
 }
@@ -646,6 +648,8 @@ body {
     font-size: 15px;
     line-height: 1.5;
     margin-bottom: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .message-time {

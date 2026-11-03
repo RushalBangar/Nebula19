@@ -1,5 +1,5 @@
 // =====================================================
-// Real-time Chat Application - High-Performance Implementation
+// Real-time Chat Application - Hardened & Optimized
 // Compatible with file:// (direct open) and http:// (web server)
 // =====================================================
 
@@ -17,20 +17,10 @@
         measurementId: "G-7KYL0F8H58"
     };
 
-    // Initialize Firebase Services
-    if (!window.firebase) {
-        console.error('Firebase SDK failed to load. Please check your internet connection.');
-        alert('Firebase SDK failed to load. Please verify your internet connection.');
-        return;
-    }
-
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
-
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-    const storage = firebase.storage();
+    let auth = null;
+    let db = null;
+    let storage = null;
+    let isOfflineFallback = false;
 
     // Global Application State
     let currentUser = null;
@@ -53,75 +43,83 @@
     let lastRenderedEmail = null;
     let lastRenderedTimestamp = 0;
 
-    // Map of pending optimistic messages: tempId -> { content, timestamp }
-    const pendingOptimisticMessages = new Set();
+    // DOM Elements (Cached safely)
+    let authScreen, lobbyScreen, chatScreen, loadingOverlay, toastContainer;
+    let loginForm, signupForm, loginEmail, loginPassword, signupEmail, signupPassword;
+    let loginBtn, signupBtn, guestBtn, guestBtnSignup, showSignupLink, showLoginLink;
+    let userEmailDisplay, roomCodeInput, joinRoomBtn, logoutBtnLobby;
+    let suggestedRooms, recentRoomsList, recentRoomsSection;
+    let currentRoomName, currentUserEmail, messagesContainer, messagesWrapper;
+    let loadEarlierContainer, loadEarlierBtn, messageInput, sendBtn;
+    let leaveRoomBtn, logoutBtnChat, shareRoomBtn, soundToggleBtn;
+    let toggleSidebarBtn, closeSidebarBtn, chatSidebar;
+    let imageUploadInput, dragOverlay, scrollBottomBtn, scrollBadge;
+    let typingIndicator, typingUserText, onlineUsersList, onlineCount;
+    let imageLightbox, lightboxImg, lightboxClose, lightboxDownload;
 
-    // DOM Elements
-    const authScreen = document.getElementById('auth-screen');
-    const lobbyScreen = document.getElementById('lobby-screen');
-    const chatScreen = document.getElementById('chat-screen');
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const toastContainer = document.getElementById('toast-container');
+    function cacheDOMElements() {
+        authScreen = document.getElementById('auth-screen');
+        lobbyScreen = document.getElementById('lobby-screen');
+        chatScreen = document.getElementById('chat-screen');
+        loadingOverlay = document.getElementById('loading-overlay');
+        toastContainer = document.getElementById('toast-container');
 
-    // Auth Elements
-    const loginForm = document.getElementById('login-form');
-    const signupForm = document.getElementById('signup-form');
-    const loginEmail = document.getElementById('login-email');
-    const loginPassword = document.getElementById('login-password');
-    const signupEmail = document.getElementById('signup-email');
-    const signupPassword = document.getElementById('signup-password');
-    const loginBtn = document.getElementById('login-btn');
-    const signupBtn = document.getElementById('signup-btn');
-    const guestBtn = document.getElementById('guest-btn');
-    const guestBtnSignup = document.getElementById('guest-btn-signup');
-    const showSignupLink = document.getElementById('show-signup');
-    const showLoginLink = document.getElementById('show-login');
+        loginForm = document.getElementById('login-form');
+        signupForm = document.getElementById('signup-form');
+        loginEmail = document.getElementById('login-email');
+        loginPassword = document.getElementById('login-password');
+        signupEmail = document.getElementById('signup-email');
+        signupPassword = document.getElementById('signup-password');
+        loginBtn = document.getElementById('login-btn');
+        signupBtn = document.getElementById('signup-btn');
+        guestBtn = document.getElementById('guest-btn');
+        guestBtnSignup = document.getElementById('guest-btn-signup');
+        showSignupLink = document.getElementById('show-signup');
+        showLoginLink = document.getElementById('show-login');
 
-    // Lobby Elements
-    const userEmailDisplay = document.getElementById('user-email-display');
-    const roomCodeInput = document.getElementById('room-code-input');
-    const joinRoomBtn = document.getElementById('join-room-btn');
-    const logoutBtnLobby = document.getElementById('logout-btn-lobby');
-    const suggestedRooms = document.getElementById('suggested-rooms');
-    const recentRoomsList = document.getElementById('recent-rooms-list');
-    const recentRoomsSection = document.getElementById('recent-rooms-section');
+        userEmailDisplay = document.getElementById('user-email-display');
+        roomCodeInput = document.getElementById('room-code-input');
+        joinRoomBtn = document.getElementById('join-room-btn');
+        logoutBtnLobby = document.getElementById('logout-btn-lobby');
+        suggestedRooms = document.getElementById('suggested-rooms');
+        recentRoomsList = document.getElementById('recent-rooms-list');
+        recentRoomsSection = document.getElementById('recent-rooms-section');
 
-    // Chat Elements
-    const currentRoomName = document.getElementById('current-room-name');
-    const currentUserEmail = document.getElementById('current-user-email');
-    const messagesContainer = document.getElementById('messages-container');
-    const messagesWrapper = document.getElementById('messages-wrapper');
-    const loadEarlierContainer = document.getElementById('load-earlier-container');
-    const loadEarlierBtn = document.getElementById('load-earlier-btn');
-    const messageInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
-    const leaveRoomBtn = document.getElementById('leave-room-btn');
-    const logoutBtnChat = document.getElementById('logout-btn-chat');
-    const shareRoomBtn = document.getElementById('share-room-btn');
-    const soundToggleBtn = document.getElementById('sound-toggle-btn');
-    const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
-    const closeSidebarBtn = document.getElementById('close-sidebar-btn');
-    const chatSidebar = document.getElementById('chat-sidebar');
-    const imageUploadInput = document.getElementById('image-upload-input');
-    const dragOverlay = document.getElementById('drag-overlay');
-    const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
-    const scrollBadge = document.getElementById('scroll-badge');
-    const typingIndicator = document.getElementById('typing-indicator');
-    const typingUserText = document.getElementById('typing-user-text');
-    const onlineUsersList = document.getElementById('online-users-list');
-    const onlineCount = document.getElementById('online-count');
+        currentRoomName = document.getElementById('current-room-name');
+        currentUserEmail = document.getElementById('current-user-email');
+        messagesContainer = document.getElementById('messages-container');
+        messagesWrapper = document.getElementById('messages-wrapper');
+        loadEarlierContainer = document.getElementById('load-earlier-container');
+        loadEarlierBtn = document.getElementById('load-earlier-btn');
+        messageInput = document.getElementById('message-input');
+        sendBtn = document.getElementById('send-btn');
+        leaveRoomBtn = document.getElementById('leave-room-btn');
+        logoutBtnChat = document.getElementById('logout-btn-chat');
+        shareRoomBtn = document.getElementById('share-room-btn');
+        soundToggleBtn = document.getElementById('sound-toggle-btn');
+        toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+        closeSidebarBtn = document.getElementById('close-sidebar-btn');
+        chatSidebar = document.getElementById('chat-sidebar');
+        imageUploadInput = document.getElementById('image-upload-input');
+        dragOverlay = document.getElementById('drag-overlay');
+        scrollBottomBtn = document.getElementById('scroll-bottom-btn');
+        scrollBadge = document.getElementById('scroll-badge');
+        typingIndicator = document.getElementById('typing-indicator');
+        typingUserText = document.getElementById('typing-user-text');
+        onlineUsersList = document.getElementById('online-users-list');
+        onlineCount = document.getElementById('online-count');
 
-    // Lightbox Elements
-    const imageLightbox = document.getElementById('image-lightbox');
-    const lightboxImg = document.getElementById('lightbox-img');
-    const lightboxClose = document.getElementById('lightbox-close');
-    const lightboxDownload = document.getElementById('lightbox-download');
+        imageLightbox = document.getElementById('image-lightbox');
+        lightboxImg = document.getElementById('lightbox-img');
+        lightboxClose = document.getElementById('lightbox-close');
+        lightboxDownload = document.getElementById('lightbox-download');
+    }
 
     // =====================================================
     // Toast Notification System
     // =====================================================
 
-    function showToast(message, type = 'info', duration = 3000) {
+    function showToast(message, type = 'info', duration = 3200) {
         if (!toastContainer) return;
 
         const toast = document.createElement('div');
@@ -146,14 +144,31 @@
     }
 
     // =====================================================
-    // Utility & Image Compression Functions (Speed Boost)
+    // Robust Utilities & Image Compression
     // =====================================================
 
-    // Fast client-side image compression: reduces multi-megabyte images to ~250KB in milliseconds
+    function parseTimestamp(timestamp) {
+        if (!timestamp) return new Date();
+        if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+            return timestamp.toDate();
+        }
+        if (timestamp instanceof Date) {
+            return timestamp;
+        }
+        if (typeof timestamp.seconds === 'number') {
+            return new Date(timestamp.seconds * 1000);
+        }
+        if (typeof timestamp._seconds === 'number') {
+            return new Date(timestamp._seconds * 1000);
+        }
+        const d = new Date(timestamp);
+        return isNaN(d.getTime()) ? new Date() : d;
+    }
+
     function compressImage(file, maxWidth = 1600, quality = 0.82) {
         return new Promise((resolve) => {
-            if (!file.type.startsWith('image/') || file.size < 250 * 1024) {
-                resolve(file); // Already small enough
+            if (!file.type || !file.type.startsWith('image/') || file.size < 250 * 1024) {
+                resolve(file);
                 return;
             }
 
@@ -182,7 +197,7 @@
 
                     canvas.toBlob((blob) => {
                         if (blob && blob.size < file.size) {
-                            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                            const compressedFile = new File([blob], (file.name || 'image').replace(/\.[^/.]+$/, "") + ".jpg", {
                                 type: 'image/jpeg',
                                 lastModified: Date.now()
                             });
@@ -209,32 +224,15 @@
     }
 
     function showScreen(screen) {
-        authScreen.classList.add('hidden');
-        lobbyScreen.classList.add('hidden');
-        chatScreen.classList.add('hidden');
+        if (!screen) return;
+        if (authScreen) authScreen.classList.add('hidden');
+        if (lobbyScreen) lobbyScreen.classList.add('hidden');
+        if (chatScreen) chatScreen.classList.add('hidden');
         screen.classList.remove('hidden');
     }
 
     function formatTime(timestamp) {
-        if (!timestamp) {
-            return new Date().toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
-        }
-
-        let date;
-        if (timestamp.toDate && typeof timestamp.toDate === 'function') {
-            date = timestamp.toDate();
-        } else if (timestamp instanceof Date) {
-            date = timestamp;
-        } else {
-            date = new Date(timestamp);
-        }
-
-        if (isNaN(date.getTime())) date = new Date();
-
+        const date = parseTimestamp(timestamp);
         return date.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
@@ -284,18 +282,18 @@
             const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
             audio.volume = 0.35;
             audio.play().catch(() => {});
-        } catch (e) {
-            // Audio fallback
-        }
+        } catch (e) {}
     }
 
     function escapeHtml(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
 
     function linkifyText(text) {
+        if (!text) return '';
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         return text.replace(urlRegex, (url) => {
             return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="message-link">${url}</a>`;
@@ -303,6 +301,7 @@
     }
 
     function parseMarkdown(text) {
+        if (!text) return '';
         let parsed = text;
         parsed = parsed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         parsed = parsed.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -321,6 +320,7 @@
     }
 
     function checkEmptyState() {
+        if (!messagesWrapper) return;
         const messagesCount = messagesWrapper.querySelectorAll('.message').length;
         let emptyState = document.getElementById('empty-state-msg');
 
@@ -421,7 +421,7 @@
             btn.type = 'button';
             btn.className = 'room-chip';
             btn.innerHTML = `
-                <span>#${room}</span>
+                <span>#${escapeHtml(room)}</span>
                 <span class="chip-delete" title="Remove"><i class="fas fa-times"></i></span>
             `;
 
@@ -448,110 +448,126 @@
         const randomNum = Math.floor(100 + Math.random() * 900);
         const guestEmail = `tester${randomNum}@nebula.test`;
 
-        try {
-            const userCredential = await auth.signInAnonymously();
-            currentUser = {
-                uid: userCredential.user.uid,
-                email: guestEmail
-            };
-            sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
-            showToast(`Signed in as ${guestEmail}`, 'success');
-            showLobby();
-        } catch (err) {
-            console.warn('Anonymous auth not enabled in Firebase Console, using local test session:', err);
-            currentUser = {
-                uid: 'guest-' + Math.random().toString(36).substring(2, 10),
-                email: guestEmail
-            };
-            sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
-            showToast(`Guest session active: ${guestEmail}`, 'success');
-            showLobby();
-        } finally {
-            hideLoading();
+        if (auth && !isOfflineFallback) {
+            try {
+                const userCredential = await auth.signInAnonymously();
+                currentUser = {
+                    uid: userCredential.user.uid,
+                    email: guestEmail
+                };
+                sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+                showToast(`Signed in as ${guestEmail}`, 'success');
+                showLobby();
+                hideLoading();
+                return;
+            } catch (err) {
+                console.warn('Anonymous auth failed, fallback to test user:', err);
+            }
         }
+
+        // Local test user session
+        currentUser = {
+            uid: 'guest-' + Math.random().toString(36).substring(2, 10),
+            email: guestEmail
+        };
+        sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+        showToast(`Guest session: ${guestEmail}`, 'success');
+        showLobby();
+        hideLoading();
     }
 
     async function handleLogin(e) {
         if (e) e.preventDefault();
-        const email = loginEmail.value.trim() || 'tester@nebula.test';
-        const password = loginPassword.value || '123456';
+        const email = (loginEmail && loginEmail.value.trim()) || 'tester@nebula.test';
+        const password = (loginPassword && loginPassword.value) || '123456';
 
         showLoading();
-        try {
-            const userCredential = await auth.signInWithEmailAndPassword(email, password);
-            currentUser = userCredential.user;
-            sessionStorage.removeItem('nebula_test_user');
-            showToast('Welcome back!', 'success');
-            showLobby();
-        } catch (error) {
-            console.warn('Login failed, attempting auto-signup or test bypass:', error);
+        if (auth && !isOfflineFallback) {
             try {
-                const userCredential = await auth.createUserWithEmailAndPassword(email, password.length >= 6 ? password : password + '123456');
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
                 currentUser = userCredential.user;
                 sessionStorage.removeItem('nebula_test_user');
-                showToast('Account created and signed in!', 'success');
+                showToast('Welcome back!', 'success');
                 showLobby();
-            } catch (signupErr) {
-                console.warn('Auto-signup failed, entering with test-mode session:', signupErr);
-                currentUser = {
-                    uid: 'user-' + Math.random().toString(36).substring(2, 10),
-                    email: email
-                };
-                sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
-                showToast(`Test mode active for ${email}`, 'info');
-                showLobby();
+                hideLoading();
+                return;
+            } catch (error) {
+                console.warn('Standard login error, trying auto-signup:', error);
+                try {
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password.length >= 6 ? password : password + '123456');
+                    currentUser = userCredential.user;
+                    sessionStorage.removeItem('nebula_test_user');
+                    showToast('Account created and signed in!', 'success');
+                    showLobby();
+                    hideLoading();
+                    return;
+                } catch (signupErr) {
+                    console.warn('Auto-signup error, entering test mode:', signupErr);
+                }
             }
-        } finally {
-            hideLoading();
         }
+
+        currentUser = {
+            uid: 'user-' + Math.random().toString(36).substring(2, 10),
+            email: email
+        };
+        sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+        showToast(`Test mode active for ${email}`, 'info');
+        showLobby();
+        hideLoading();
     }
 
     async function handleSignup(e) {
         if (e) e.preventDefault();
-        const email = signupEmail.value.trim() || 'tester@nebula.test';
-        const password = signupPassword.value || '123456';
+        const email = (signupEmail && signupEmail.value.trim()) || 'tester@nebula.test';
+        const password = (signupPassword && signupPassword.value) || '123456';
 
         showLoading();
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword(email, password.length >= 6 ? password : password + '123456');
-            currentUser = userCredential.user;
-            sessionStorage.removeItem('nebula_test_user');
-            showToast('Account created successfully!', 'success');
-            showLobby();
-        } catch (error) {
-            console.warn('Signup failed, entering with test-mode session:', error);
-            currentUser = {
-                uid: 'user-' + Math.random().toString(36).substring(2, 10),
-                email: email
-            };
-            sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
-            showToast(`Test mode session started for ${email}`, 'info');
-            showLobby();
-        } finally {
-            hideLoading();
+        if (auth && !isOfflineFallback) {
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password.length >= 6 ? password : password + '123456');
+                currentUser = userCredential.user;
+                sessionStorage.removeItem('nebula_test_user');
+                showToast('Account created successfully!', 'success');
+                showLobby();
+                hideLoading();
+                return;
+            } catch (error) {
+                console.warn('Signup error, entering test mode:', error);
+            }
         }
+
+        currentUser = {
+            uid: 'user-' + Math.random().toString(36).substring(2, 10),
+            email: email
+        };
+        sessionStorage.setItem('nebula_test_user', JSON.stringify(currentUser));
+        showToast(`Test mode session for ${email}`, 'info');
+        showLobby();
+        hideLoading();
     }
 
     async function handleLogout() {
         showLoading();
         leaveRoomCleanup();
         sessionStorage.removeItem('nebula_test_user');
-        try {
-            await auth.signOut();
-        } catch (error) {
-            console.error('Logout error:', error);
-        } finally {
-            hideLoading();
-            currentUser = null;
-            currentRoomCode = null;
-            showToast('You have logged out.', 'info');
-            showScreen(authScreen);
+        if (auth) {
+            try {
+                await auth.signOut();
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
         }
+        hideLoading();
+        currentUser = null;
+        currentRoomCode = null;
+        showToast('You have logged out.', 'info');
+        showScreen(authScreen);
     }
 
     function toggleAuthForms() {
-        loginForm.classList.toggle('hidden');
-        signupForm.classList.toggle('hidden');
+        if (loginForm) loginForm.classList.toggle('hidden');
+        if (signupForm) signupForm.classList.toggle('hidden');
     }
 
     // =====================================================
@@ -559,7 +575,7 @@
     // =====================================================
 
     function showLobby() {
-        if (currentUser) {
+        if (currentUser && userEmailDisplay) {
             userEmailDisplay.textContent = currentUser.email;
         }
 
@@ -578,6 +594,7 @@
     }
 
     function handleJoinRoom() {
+        if (!roomCodeInput) return;
         const roomCode = roomCodeInput.value.trim().toUpperCase();
 
         if (!roomCode) {
@@ -604,10 +621,12 @@
             presenceHeartbeatInterval = null;
         }
 
+        if (!db || !currentRoomCode || !currentUser) return;
+
         const userPresenceDoc = db.collection('rooms').doc(currentRoomCode).collection('presence').doc(currentUser.uid);
 
         async function sendHeartbeat() {
-            if (!currentRoomCode || !currentUser) return;
+            if (!currentRoomCode || !currentUser || !db) return;
             try {
                 await userPresenceDoc.set({
                     email: currentUser.email,
@@ -621,22 +640,26 @@
         sendHeartbeat();
         presenceHeartbeatInterval = setInterval(sendHeartbeat, 25000);
 
-        unsubscribePresence = db.collection('rooms').doc(currentRoomCode).collection('presence').onSnapshot((snapshot) => {
-            const now = Date.now();
-            onlineUsers = {};
+        try {
+            unsubscribePresence = db.collection('rooms').doc(currentRoomCode).collection('presence').onSnapshot((snapshot) => {
+                const now = Date.now();
+                onlineUsers = {};
 
-            snapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                if (data.lastSeen && (now - data.lastSeen < 60000)) {
-                    onlineUsers[docSnap.id] = data;
-                }
+                snapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data.lastSeen && (now - data.lastSeen < 60000)) {
+                        onlineUsers[docSnap.id] = data;
+                    }
+                });
+
+                updateOnlineUsersUI();
+                updateReadReceiptsUI();
+            }, (error) => {
+                console.warn('Presence snapshot error:', error);
             });
-
-            updateOnlineUsersUI();
-            updateReadReceiptsUI();
-        }, (error) => {
-            console.warn('Presence snapshot error:', error);
-        });
+        } catch (err) {
+            console.warn('Error starting presence listener:', err);
+        }
     }
 
     function updateOnlineUsersUI() {
@@ -683,29 +706,35 @@
             unsubscribeTyping = null;
         }
 
-        unsubscribeTyping = db.collection('rooms').doc(currentRoomCode).collection('typing').onSnapshot((snapshot) => {
-            const now = Date.now();
-            let activeTypingEmail = null;
+        if (!db || !currentRoomCode) return;
 
-            snapshot.forEach((docSnap) => {
-                if (docSnap.id !== (currentUser ? currentUser.uid : '')) {
-                    const data = docSnap.data();
-                    if (data.timestamp && (now - data.timestamp < 3500)) {
-                        activeTypingEmail = data.email;
+        try {
+            unsubscribeTyping = db.collection('rooms').doc(currentRoomCode).collection('typing').onSnapshot((snapshot) => {
+                const now = Date.now();
+                let activeTypingEmail = null;
+
+                snapshot.forEach((docSnap) => {
+                    if (docSnap.id !== (currentUser ? currentUser.uid : '')) {
+                        const data = docSnap.data();
+                        if (data.timestamp && (now - data.timestamp < 3500)) {
+                            activeTypingEmail = data.email;
+                        }
                     }
-                }
-            });
+                });
 
-            if (activeTypingEmail) {
-                showTypingIndicator(activeTypingEmail);
-            }
-        }, (error) => {
-            console.warn('Typing snapshot error:', error);
-        });
+                if (activeTypingEmail) {
+                    showTypingIndicator(activeTypingEmail);
+                }
+            }, (error) => {
+                console.warn('Typing snapshot error:', error);
+            });
+        } catch (err) {
+            console.warn('Error starting typing listener:', err);
+        }
     }
 
     async function broadcastTyping() {
-        if (!currentRoomCode || !currentUser) return;
+        if (!currentRoomCode || !currentUser || !db) return;
         const now = Date.now();
         if (now - lastTypingBroadcast < 1500) return;
         lastTypingBroadcast = now;
@@ -721,14 +750,15 @@
     }
 
     // =====================================================
-    // Chat Room & Real-time Messages (Optimized with Batch Fragments & Limit)
+    // Chat Room & Real-time Messages
     // =====================================================
 
     function showChatRoom() {
-        currentRoomName.textContent = `# ${currentRoomCode}`;
-        currentUserEmail.textContent = currentUser.email;
-        messagesWrapper.innerHTML = '';
-        if (loadEarlierContainer) {
+        if (currentRoomName) currentRoomName.textContent = `# ${currentRoomCode}`;
+        if (currentUserEmail) currentUserEmail.textContent = currentUser ? currentUser.email : '';
+        if (messagesWrapper) messagesWrapper.innerHTML = '';
+
+        if (loadEarlierContainer && messagesWrapper) {
             messagesWrapper.appendChild(loadEarlierContainer);
             loadEarlierContainer.classList.add('hidden');
         }
@@ -737,7 +767,6 @@
         lastRenderedEmail = null;
         lastRenderedTimestamp = 0;
         oldestMessageDoc = null;
-        pendingOptimisticMessages.clear();
 
         showScreen(chatScreen);
 
@@ -746,7 +775,7 @@
         setupTypingListener();
         updateSoundToggleUI();
 
-        messageInput.focus();
+        if (messageInput) messageInput.focus();
     }
 
     function subscribeToMessages() {
@@ -755,68 +784,65 @@
             unsubscribeMessages = null;
         }
 
+        if (!db || !currentRoomCode) return;
+
         isInitialMessagesLoad = true;
         showLoading();
 
-        // Performance: fetch recent 50 messages instead of unbounded history
-        const messagesQuery = db.collection('rooms').doc(currentRoomCode).collection('messages')
-            .orderBy('created_at', 'asc')
-            .limitToLast(50);
+        try {
+            const messagesQuery = db.collection('rooms').doc(currentRoomCode).collection('messages')
+                .orderBy('created_at', 'asc')
+                .limitToLast(50);
 
-        unsubscribeMessages = messagesQuery.onSnapshot((snapshot) => {
-            hideLoading();
+            unsubscribeMessages = messagesQuery.onSnapshot((snapshot) => {
+                hideLoading();
 
-            if (snapshot.docs.length > 0) {
-                oldestMessageDoc = snapshot.docs[0];
-                if (snapshot.docs.length >= 50 && loadEarlierContainer) {
-                    loadEarlierContainer.classList.remove('hidden');
+                if (snapshot.docs.length > 0) {
+                    oldestMessageDoc = snapshot.docs[0];
+                    if (snapshot.docs.length >= 50 && loadEarlierContainer) {
+                        loadEarlierContainer.classList.remove('hidden');
+                    }
                 }
-            }
 
-            // High-speed Initial Load: Batch render in a single DocumentFragment
-            if (isInitialMessagesLoad) {
-                messagesWrapper.innerHTML = '';
-                if (loadEarlierContainer) {
-                    messagesWrapper.appendChild(loadEarlierContainer);
+                // Initial Batch Render
+                if (isInitialMessagesLoad) {
+                    messagesWrapper.innerHTML = '';
+                    if (loadEarlierContainer) {
+                        messagesWrapper.appendChild(loadEarlierContainer);
+                    }
+                    lastRenderedDateStr = null;
+                    lastRenderedEmail = null;
+                    lastRenderedTimestamp = 0;
+
+                    const fragment = document.createDocumentFragment();
+
+                    snapshot.forEach((docSnap) => {
+                        const msgData = { id: docSnap.id, ...docSnap.data() };
+                        buildMessageNodes(msgData, fragment);
+                    });
+
+                    messagesWrapper.appendChild(fragment);
+
+                    isInitialMessagesLoad = false;
+                    scrollToBottom(false);
+                    checkEmptyState();
+                    return;
                 }
-                lastRenderedDateStr = null;
-                lastRenderedEmail = null;
-                lastRenderedTimestamp = 0;
 
-                const fragment = document.createDocumentFragment();
+                // Incremental Updates
+                const docChanges = snapshot.docChanges();
 
-                snapshot.forEach((docSnap) => {
-                    const msgData = { id: docSnap.id, ...docSnap.data() };
-                    buildMessageNodes(msgData, fragment);
-                });
+                docChanges.forEach((change) => {
+                    const msgData = { id: change.doc.id, ...change.doc.data() };
 
-                messagesWrapper.appendChild(fragment);
+                    if (change.type === 'added') {
+                        // Avoid duplicates if optimistic message already exists
+                        const alreadyInDom = document.querySelector(`.message[data-msg-id="${msgData.id}"]`);
+                        if (alreadyInDom) {
+                            alreadyInDom.classList.remove('pending');
+                            return;
+                        }
 
-                isInitialMessagesLoad = false;
-                scrollToBottom(false);
-                checkEmptyState();
-                return;
-            }
-
-            // Incremental Real-time Updates
-            const docChanges = snapshot.docChanges();
-
-            docChanges.forEach((change) => {
-                const msgData = { id: change.doc.id, ...change.doc.data() };
-
-                if (change.type === 'added') {
-                    // Check if matching optimistic message is already in DOM
-                    const existingOptimistic = Array.from(document.querySelectorAll('.message.pending')).find(
-                        el => el.getAttribute('data-content') === msgData.content &&
-                              el.getAttribute('data-sender') === msgData.user_email
-                    );
-
-                    if (existingOptimistic) {
-                        // Replace pending optimistic element with confirmed real message
-                        const nextSib = existingOptimistic.nextSibling;
-                        existingOptimistic.remove();
-                        displayMessage(msgData, true, nextSib);
-                    } else {
                         const isNearBottom = messagesContainer ?
                             (messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 150) : true;
 
@@ -828,39 +854,41 @@
                             if (scrollBadge) scrollBadge.classList.remove('hidden');
                         }
 
-                        if (msgData.user_email !== currentUser.email) {
+                        if (msgData.user_email !== (currentUser ? currentUser.email : '')) {
                             playNotificationSound();
                         }
+                    } else if (change.type === 'modified') {
+                        const existingDiv = document.querySelector(`.message[data-msg-id="${msgData.id}"]`);
+                        if (existingDiv) {
+                            const currentScroll = messagesContainer ? messagesContainer.scrollTop : 0;
+                            const nextSibling = existingDiv.nextSibling;
+                            existingDiv.remove();
+                            displayMessage(msgData, true, nextSibling);
+                            if (messagesContainer) messagesContainer.scrollTop = currentScroll;
+                        }
+                    } else if (change.type === 'removed') {
+                        const existingDiv = document.querySelector(`.message[data-msg-id="${msgData.id}"]`);
+                        if (existingDiv) {
+                            existingDiv.remove();
+                            checkEmptyState();
+                        }
                     }
-                } else if (change.type === 'modified') {
-                    const existingDiv = document.querySelector(`.message[data-msg-id="${msgData.id}"]`);
-                    if (existingDiv) {
-                        const currentScroll = messagesContainer ? messagesContainer.scrollTop : 0;
-                        const nextSibling = existingDiv.nextSibling;
-                        existingDiv.remove();
-                        displayMessage(msgData, true, nextSibling);
-                        if (messagesContainer) messagesContainer.scrollTop = currentScroll;
-                    }
-                } else if (change.type === 'removed') {
-                    const existingDiv = document.querySelector(`.message[data-msg-id="${msgData.id}"]`);
-                    if (existingDiv) {
-                        existingDiv.remove();
-                        checkEmptyState();
-                    }
-                }
-            });
+                });
 
-            checkEmptyState();
-        }, (error) => {
+                checkEmptyState();
+            }, (error) => {
+                hideLoading();
+                console.error('Error listening to messages:', error);
+                showToast('Error loading messages: ' + error.message, 'error');
+            });
+        } catch (err) {
             hideLoading();
-            console.error('Error listening to messages:', error);
-            showToast('Error loading messages: ' + error.message, 'error');
-        });
+            console.error('Failed to subscribe to messages:', err);
+        }
     }
 
-    // Load Earlier Messages (Pagination for fast initial loads)
     async function loadEarlierMessages() {
-        if (!oldestMessageDoc || !currentRoomCode) return;
+        if (!oldestMessageDoc || !currentRoomCode || !db) return;
 
         showLoading();
         try {
@@ -880,7 +908,6 @@
 
             oldestMessageDoc = olderQuery.docs[0];
 
-            // Record current scroll position to avoid jump
             const prevScrollHeight = messagesContainer ? messagesContainer.scrollHeight : 0;
             const prevScrollTop = messagesContainer ? messagesContainer.scrollTop : 0;
 
@@ -890,11 +917,11 @@
                 buildMessageNodes(msgData, fragment);
             });
 
-            // Insert right after the load-earlier container
-            const insertPoint = loadEarlierContainer ? loadEarlierContainer.nextSibling : messagesWrapper.firstChild;
-            messagesWrapper.insertBefore(fragment, insertPoint);
+            const insertPoint = loadEarlierContainer ? loadEarlierContainer.nextSibling : (messagesWrapper ? messagesWrapper.firstChild : null);
+            if (messagesWrapper && insertPoint) {
+                messagesWrapper.insertBefore(fragment, insertPoint);
+            }
 
-            // Restore scroll position
             if (messagesContainer) {
                 messagesContainer.scrollTop = prevScrollTop + (messagesContainer.scrollHeight - prevScrollHeight);
             }
@@ -909,26 +936,22 @@
         }
     }
 
-    // =====================================================
-    // Instant Optimistic Message Sending (0ms User Latency)
-    // =====================================================
-
     async function sendMessage() {
+        if (!messageInput) return;
         const content = messageInput.value.trim();
         if (!content) return;
 
-        // Reset input immediately
         messageInput.value = '';
         messageInput.style.height = 'auto';
 
-        const tempId = 'optimistic_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        const tempId = 'optimistic_' + Date.now();
 
-        // Optimistic local message object for instant UI render
+        // 0ms Optimistic UI render
         const optimisticMsg = {
             id: tempId,
             room_code: currentRoomCode,
-            user_email: currentUser.email,
-            user_id: currentUser.uid,
+            user_email: currentUser ? currentUser.email : 'User',
+            user_id: currentUser ? currentUser.uid : 'anon',
             content: content,
             image_url: null,
             reactions: {},
@@ -937,12 +960,16 @@
             isPending: true
         };
 
-        // Render immediately in 0ms!
         displayMessage(optimisticMsg);
         scrollToBottom(true);
 
+        if (!db) {
+            showToast('Database not connected. Message sent locally only.', 'info');
+            return;
+        }
+
         try {
-            await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
+            const docRef = await db.collection('rooms').doc(currentRoomCode).collection('messages').add({
                 room_code: currentRoomCode,
                 user_email: currentUser.email,
                 user_id: currentUser.uid,
@@ -953,15 +980,26 @@
                 created_at: firebase.firestore.FieldValue.serverTimestamp(),
                 edited_at: null
             });
+
+            // Smoothly upgrade optimistic element ID to actual Firestore doc ID
+            const pendingElement = document.querySelector(`.message[data-msg-id="${tempId}"]`);
+            if (pendingElement) {
+                pendingElement.setAttribute('data-msg-id', docRef.id);
+                pendingElement.classList.remove('pending');
+                const clock = pendingElement.querySelector('.fa-clock');
+                if (clock) {
+                    clock.className = 'fas fa-check read-receipt-icon';
+                    clock.title = 'Sent';
+                }
+            }
         } catch (error) {
             console.error('Error sending message:', error);
             showToast('Failed to send message: ' + error.message, 'error');
 
-            // Mark optimistic message as failed
             const pendingEl = document.querySelector(`.message[data-msg-id="${tempId}"]`);
             if (pendingEl) {
                 pendingEl.style.opacity = '0.5';
-                pendingEl.title = 'Failed to send. Click to retry.';
+                pendingEl.title = 'Failed to send.';
             }
         }
     }
@@ -969,9 +1007,13 @@
     async function uploadImageFile(file) {
         if (!file || !currentRoomCode || !currentUser) return;
 
+        if (!storage || !db) {
+            showToast('Cloud storage is not connected.', 'error');
+            return;
+        }
+
         showLoading();
         try {
-            // Speed boost: fast in-memory client compression
             const compressed = await compressImage(file, 1600, 0.82);
 
             const fileExt = compressed.name ? compressed.name.split('.').pop() : 'jpg';
@@ -993,22 +1035,21 @@
                 edited_at: null
             });
 
-            showToast('Image uploaded in milliseconds!', 'success');
+            showToast('Image uploaded!', 'success');
         } catch (err) {
             console.error('Image upload failed:', err);
-            showToast('Failed to upload image: ' + err.message, 'error');
+            let msg = err.message || '';
+            if (err.code === 'storage/unauthorized') {
+                msg = 'Permission denied. Make sure storage.rules are published in your Firebase Console.';
+            }
+            showToast('Failed to upload image: ' + msg, 'error');
         } finally {
             hideLoading();
         }
     }
 
-    // Helper to construct DOM nodes (reusable for single items & document fragments)
     function buildMessageNodes(message, containerNode) {
-        let msgDate = new Date();
-        if (message.created_at) {
-            if (message.created_at.toDate) msgDate = message.created_at.toDate();
-            else msgDate = new Date(message.created_at);
-        }
+        const msgDate = parseTimestamp(message.created_at);
         const msgDateStr = msgDate.toDateString();
 
         if (msgDateStr !== lastRenderedDateStr) {
@@ -1121,11 +1162,9 @@
     }
 
     function displayMessage(message, isUpdate = false, insertBeforeNode = null) {
-        let msgDate = new Date();
-        if (message.created_at) {
-            if (message.created_at.toDate) msgDate = message.created_at.toDate();
-            else msgDate = new Date(message.created_at);
-        }
+        if (!messagesWrapper) return;
+
+        const msgDate = parseTimestamp(message.created_at);
         const msgDateStr = msgDate.toDateString();
 
         if (!isUpdate && msgDateStr !== lastRenderedDateStr) {
@@ -1140,12 +1179,14 @@
             }
         }
 
-        const msgTime = msgDate.getTime();
-        const isConsecutive = !isUpdate &&
-            lastRenderedEmail === message.user_email &&
-            (msgTime - lastRenderedTimestamp < 120000);
-
-        if (!isUpdate) {
+        let isConsecutive = false;
+        if (isUpdate) {
+            // Check previous sibling element to preserve grouping state
+            const prevEl = insertBeforeNode ? insertBeforeNode.previousElementSibling : messagesWrapper.lastElementChild;
+            isConsecutive = prevEl && prevEl.classList.contains('message') && prevEl.getAttribute('data-sender') === message.user_email;
+        } else {
+            const msgTime = msgDate.getTime();
+            isConsecutive = lastRenderedEmail === message.user_email && (msgTime - lastRenderedTimestamp < 120000);
             lastRenderedEmail = message.user_email;
             lastRenderedTimestamp = msgTime;
         }
@@ -1162,6 +1203,7 @@
     }
 
     async function toggleReaction(messageId, emoji) {
+        if (!db || !currentRoomCode || !currentUser) return;
         try {
             const messageRef = db.collection('rooms').doc(currentRoomCode).collection('messages').doc(messageId);
             const docSnap = await messageRef.get();
@@ -1191,7 +1233,7 @@
             clearInterval(presenceHeartbeatInterval);
             presenceHeartbeatInterval = null;
         }
-        if (currentRoomCode && currentUser) {
+        if (currentRoomCode && currentUser && db) {
             const userPresenceDoc = db.collection('rooms').doc(currentRoomCode).collection('presence').doc(currentUser.uid);
             userPresenceDoc.delete().catch(() => {});
             const typingDoc = db.collection('rooms').doc(currentRoomCode).collection('typing').doc(currentUser.uid);
@@ -1215,320 +1257,335 @@
     function leaveRoom() {
         leaveRoomCleanup();
         currentRoomCode = null;
-        roomCodeInput.value = '';
+        if (roomCodeInput) roomCodeInput.value = '';
         showLobby();
     }
 
     // =====================================================
-    // Event Listeners (Optimized & Throttled)
+    // Attach Event Listeners Safely
     // =====================================================
 
-    // Auth Events
-    loginBtn.addEventListener('click', handleLogin);
-    signupBtn.addEventListener('click', handleSignup);
-    if (guestBtn) guestBtn.addEventListener('click', handleGuestSignIn);
-    if (guestBtnSignup) guestBtnSignup.addEventListener('click', handleGuestSignIn);
+    function attachEventListeners() {
+        if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+        if (signupBtn) signupBtn.addEventListener('click', handleSignup);
+        if (guestBtn) guestBtn.addEventListener('click', handleGuestSignIn);
+        if (guestBtnSignup) guestBtnSignup.addEventListener('click', handleGuestSignIn);
 
-    showSignupLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleAuthForms();
-    });
-    showLoginLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleAuthForms();
-    });
-
-    loginPassword.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') handleLogin(e);
-    });
-    loginEmail.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') handleLogin(e);
-    });
-    signupPassword.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') handleSignup(e);
-    });
-
-    // Lobby Events
-    joinRoomBtn.addEventListener('click', handleJoinRoom);
-    logoutBtnLobby.addEventListener('click', handleLogout);
-    roomCodeInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') handleJoinRoom();
-    });
-
-    // Suggested Channels in Lobby
-    if (suggestedRooms) {
-        suggestedRooms.addEventListener('click', (e) => {
-            const chip = e.target.closest('.room-chip');
-            if (chip) {
-                const targetRoom = chip.getAttribute('data-room');
-                if (targetRoom) {
-                    roomCodeInput.value = targetRoom;
-                    handleJoinRoom();
-                }
-            }
-        });
-    }
-
-    // Chat Events
-    sendBtn.addEventListener('click', sendMessage);
-
-    // Auto-expanding textarea & Enter-to-send (Shift+Enter for newline)
-    messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
-    messageInput.addEventListener('input', () => {
-        messageInput.style.height = 'auto';
-        messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
-        broadcastTyping();
-    });
-
-    // Image Upload Event (File Picker)
-    imageUploadInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        imageUploadInput.value = '';
-        await uploadImageFile(file);
-    });
-
-    // Clipboard Paste Image Event (Ctrl + V)
-    document.addEventListener('paste', async (e) => {
-        if (chatScreen.classList.contains('hidden')) return;
-
-        const clipboardItems = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let i = 0; i < clipboardItems.length; i++) {
-            if (clipboardItems[i].type.indexOf('image') !== -1) {
+        if (showSignupLink) {
+            showSignupLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                const file = clipboardItems[i].getAsFile();
-                if (file) {
-                    showToast('Compressing and pasting image...', 'info');
-                    await uploadImageFile(file);
-                }
-                break;
-            }
+                toggleAuthForms();
+            });
         }
-    });
+        if (showLoginLink) {
+            showLoginLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                toggleAuthForms();
+            });
+        }
 
-    // Drag and Drop Images
-    if (chatScreen && dragOverlay) {
-        window.addEventListener('dragover', (e) => {
-            if (chatScreen.classList.contains('hidden')) return;
-            e.preventDefault();
-            dragOverlay.classList.remove('hidden');
-        });
+        if (loginPassword) {
+            loginPassword.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleLogin(e);
+            });
+        }
+        if (loginEmail) {
+            loginEmail.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleLogin(e);
+            });
+        }
+        if (signupPassword) {
+            signupPassword.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleSignup(e);
+            });
+        }
 
-        window.addEventListener('dragleave', (e) => {
-            if (e.clientX <= 0 || e.clientY <= 0) {
-                dragOverlay.classList.add('hidden');
-            }
-        });
+        if (joinRoomBtn) joinRoomBtn.addEventListener('click', handleJoinRoom);
+        if (logoutBtnLobby) logoutBtnLobby.addEventListener('click', handleLogout);
+        if (roomCodeInput) {
+            roomCodeInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleJoinRoom();
+            });
+        }
 
-        window.addEventListener('drop', async (e) => {
-            if (chatScreen.classList.contains('hidden')) return;
-            e.preventDefault();
-            dragOverlay.classList.add('hidden');
-
-            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                const file = e.dataTransfer.files[0];
-                if (file.type.startsWith('image/')) {
-                    showToast('Compressing and uploading...', 'info');
-                    await uploadImageFile(file);
-                } else {
-                    showToast('Only image files are supported.', 'error');
-                }
-            }
-        });
-    }
-
-    // High-performance RAF Throttled Scroll Listener
-    if (messagesContainer && scrollBottomBtn) {
-        messagesContainer.addEventListener('scroll', () => {
-            if (!isScrollTicking) {
-                window.requestAnimationFrame(() => {
-                    const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-                    if (distanceFromBottom > 160) {
-                        scrollBottomBtn.classList.remove('hidden');
-                    } else {
-                        scrollBottomBtn.classList.add('hidden');
-                        if (scrollBadge) scrollBadge.classList.add('hidden');
+        if (suggestedRooms) {
+            suggestedRooms.addEventListener('click', (e) => {
+                const chip = e.target.closest('.room-chip');
+                if (chip) {
+                    const targetRoom = chip.getAttribute('data-room');
+                    if (targetRoom && roomCodeInput) {
+                        roomCodeInput.value = targetRoom;
+                        handleJoinRoom();
                     }
-                    isScrollTicking = false;
-                });
-                isScrollTicking = true;
+                }
+            });
+        }
+
+        if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+
+        if (messageInput) {
+            messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            messageInput.addEventListener('input', () => {
+                messageInput.style.height = 'auto';
+                messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+                broadcastTyping();
+            });
+        }
+
+        if (imageUploadInput) {
+            imageUploadInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                imageUploadInput.value = '';
+                await uploadImageFile(file);
+            });
+        }
+
+        // Paste Image Support
+        document.addEventListener('paste', async (e) => {
+            if (!chatScreen || chatScreen.classList.contains('hidden')) return;
+
+            const clipboardItems = (e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData));
+            if (!clipboardItems || !clipboardItems.items) return;
+
+            for (let i = 0; i < clipboardItems.items.length; i++) {
+                if (clipboardItems.items[i].type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    const file = clipboardItems.items[i].getAsFile();
+                    if (file) {
+                        showToast('Pasting image...', 'info');
+                        await uploadImageFile(file);
+                    }
+                    break;
+                }
             }
-        }, { passive: true });
-
-        scrollBottomBtn.addEventListener('click', () => {
-            scrollToBottom(true);
         });
-    }
 
-    // Load Earlier Messages Button
-    if (loadEarlierBtn) {
-        loadEarlierBtn.addEventListener('click', loadEarlierMessages);
-    }
+        // Drag & Drop
+        if (chatScreen && dragOverlay) {
+            window.addEventListener('dragover', (e) => {
+                if (chatScreen.classList.contains('hidden')) return;
+                e.preventDefault();
+                dragOverlay.classList.remove('hidden');
+            });
 
-    // Share Room Invite Link
-    if (shareRoomBtn) {
-        shareRoomBtn.addEventListener('click', () => {
-            if (!currentRoomCode) return;
-            const origin = window.location.origin;
-            const path = window.location.pathname;
-            const inviteUrl = `${origin}${path}?room=${encodeURIComponent(currentRoomCode)}`;
+            window.addEventListener('dragleave', (e) => {
+                if (e.clientX <= 0 || e.clientY <= 0) {
+                    dragOverlay.classList.add('hidden');
+                }
+            });
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(inviteUrl).then(() => {
-                    showToast(`Invite link copied for #${currentRoomCode}!`, 'success');
-                }).catch(() => {
+            window.addEventListener('drop', async (e) => {
+                if (chatScreen.classList.contains('hidden')) return;
+                e.preventDefault();
+                dragOverlay.classList.add('hidden');
+
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const file = e.dataTransfer.files[0];
+                    if (file.type.startsWith('image/')) {
+                        showToast('Uploading dropped image...', 'info');
+                        await uploadImageFile(file);
+                    } else {
+                        showToast('Only image files are supported.', 'error');
+                    }
+                }
+            });
+        }
+
+        if (messagesContainer && scrollBottomBtn) {
+            messagesContainer.addEventListener('scroll', () => {
+                if (!isScrollTicking) {
+                    window.requestAnimationFrame(() => {
+                        const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+                        if (dist > 160) {
+                            scrollBottomBtn.classList.remove('hidden');
+                        } else {
+                            scrollBottomBtn.classList.add('hidden');
+                            if (scrollBadge) scrollBadge.classList.add('hidden');
+                        }
+                        isScrollTicking = false;
+                    });
+                    isScrollTicking = true;
+                }
+            }, { passive: true });
+
+            scrollBottomBtn.addEventListener('click', () => {
+                scrollToBottom(true);
+            });
+        }
+
+        if (loadEarlierBtn) {
+            loadEarlierBtn.addEventListener('click', loadEarlierMessages);
+        }
+
+        if (shareRoomBtn) {
+            shareRoomBtn.addEventListener('click', () => {
+                if (!currentRoomCode) return;
+                const origin = window.location.origin;
+                const path = window.location.pathname;
+                const inviteUrl = `${origin}${path}?room=${encodeURIComponent(currentRoomCode)}`;
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(inviteUrl).then(() => {
+                        showToast(`Invite link copied for #${currentRoomCode}!`, 'success');
+                    }).catch(() => {
+                        prompt('Copy this invite link:', inviteUrl);
+                    });
+                } else {
                     prompt('Copy this invite link:', inviteUrl);
-                });
-            } else {
-                prompt('Copy this invite link:', inviteUrl);
-            }
-        });
-    }
-
-    // Sound Chimes Toggle
-    if (soundToggleBtn) {
-        soundToggleBtn.addEventListener('click', () => {
-            isSoundMuted = !isSoundMuted;
-            localStorage.setItem('nebula_sound_muted', isSoundMuted ? 'true' : 'false');
-            updateSoundToggleUI();
-            showToast(isSoundMuted ? 'Sound chimes muted' : 'Sound chimes enabled', 'info');
-        });
-    }
-
-    // Mobile Sidebar Drawer Toggles
-    if (toggleSidebarBtn && chatSidebar) {
-        toggleSidebarBtn.addEventListener('click', () => {
-            chatSidebar.classList.toggle('sidebar-open');
-        });
-    }
-
-    if (closeSidebarBtn && chatSidebar) {
-        closeSidebarBtn.addEventListener('click', () => {
-            chatSidebar.classList.remove('sidebar-open');
-        });
-    }
-
-    // Messages Area Clicks (Lightbox, Copy, Reactions, Edit, Delete)
-    messagesWrapper.addEventListener('click', async (e) => {
-        const img = e.target.closest('.message-image');
-        if (img) {
-            openLightbox(img.src);
-            return;
-        }
-
-        const copyBtn = e.target.closest('.copy-btn');
-        const editBtn = e.target.closest('.edit-btn');
-        const deleteBtn = e.target.closest('.delete-btn');
-        const reactBtn = e.target.closest('.react-btn');
-        const emojiOpt = e.target.closest('.emoji-option');
-        const reactionPill = e.target.closest('.reaction-click');
-
-        if (!reactBtn && !emojiOpt) {
-            document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
-        }
-
-        if (copyBtn) {
-            const messageDiv = copyBtn.closest('.message');
-            const content = messageDiv ? messageDiv.getAttribute('data-content') : '';
-            if (content) {
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(content).then(() => {
-                        showToast('Message copied to clipboard!', 'success');
-                    }).catch(() => {});
                 }
-            }
+            });
         }
 
-        if (reactBtn) {
-            const messageId = reactBtn.getAttribute('data-id');
-            const picker = document.getElementById(`picker-${messageId}`);
-            if (picker) {
-                const isHidden = picker.classList.contains('hidden');
-                document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
-                if (isHidden) picker.classList.remove('hidden');
-            }
+        if (soundToggleBtn) {
+            soundToggleBtn.addEventListener('click', () => {
+                isSoundMuted = !isSoundMuted;
+                localStorage.setItem('nebula_sound_muted', isSoundMuted ? 'true' : 'false');
+                updateSoundToggleUI();
+                showToast(isSoundMuted ? 'Sound chimes muted' : 'Sound chimes enabled', 'info');
+            });
         }
 
-        if (emojiOpt || reactionPill) {
-            const target = emojiOpt || reactionPill;
-            const messageId = target.getAttribute('data-id');
-            const emoji = target.getAttribute('data-emoji');
-            document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
-            await toggleReaction(messageId, emoji);
+        if (toggleSidebarBtn && chatSidebar) {
+            toggleSidebarBtn.addEventListener('click', () => {
+                chatSidebar.classList.toggle('sidebar-open');
+            });
         }
 
-        if (deleteBtn) {
-            const messageId = deleteBtn.getAttribute('data-id');
-            if (confirm('Are you sure you want to delete this message?')) {
-                try {
-                    await db.collection('rooms').doc(currentRoomCode).collection('messages').doc(messageId).update({
-                        is_deleted: true,
-                        content: 'This message was deleted'
-                    });
-                    showToast('Message deleted', 'info');
-                } catch (err) {
-                    console.error('Failed to delete message:', err);
-                    showToast('Failed to delete message: ' + err.message, 'error');
+        if (closeSidebarBtn && chatSidebar) {
+            closeSidebarBtn.addEventListener('click', () => {
+                chatSidebar.classList.remove('sidebar-open');
+            });
+        }
+
+        if (messagesWrapper) {
+            messagesWrapper.addEventListener('click', async (e) => {
+                const img = e.target.closest('.message-image');
+                if (img) {
+                    openLightbox(img.src);
+                    return;
                 }
-            }
-        }
 
-        if (editBtn) {
-            const messageId = editBtn.getAttribute('data-id');
-            const msgDiv = editBtn.closest('.message');
-            const prevText = msgDiv ? msgDiv.getAttribute('data-content') : '';
-            const newContent = prompt('Edit your message:', prevText);
-            if (newContent !== null && newContent.trim() !== '') {
-                try {
-                    await db.collection('rooms').doc(currentRoomCode).collection('messages').doc(messageId).update({
-                        content: newContent.trim(),
-                        edited_at: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    showToast('Message updated', 'success');
-                } catch (err) {
-                    console.error('Failed to edit message:', err);
-                    showToast('Failed to edit message: ' + err.message, 'error');
+                const copyBtn = e.target.closest('.copy-btn');
+                const editBtn = e.target.closest('.edit-btn');
+                const deleteBtn = e.target.closest('.delete-btn');
+                const reactBtn = e.target.closest('.react-btn');
+                const emojiOpt = e.target.closest('.emoji-option');
+                const reactionPill = e.target.closest('.reaction-click');
+
+                if (!reactBtn && !emojiOpt) {
+                    document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
                 }
-            }
-        }
-    });
 
-    // Lightbox Modal Events
-    if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
-    if (imageLightbox) {
-        const backdrop = imageLightbox.querySelector('.lightbox-backdrop');
-        if (backdrop) backdrop.addEventListener('click', closeLightbox);
+                if (copyBtn) {
+                    const messageDiv = copyBtn.closest('.message');
+                    const content = messageDiv ? messageDiv.getAttribute('data-content') : '';
+                    if (content && navigator.clipboard) {
+                        navigator.clipboard.writeText(content).then(() => {
+                            showToast('Message copied to clipboard!', 'success');
+                        }).catch(() => {});
+                    }
+                }
+
+                if (reactBtn) {
+                    const messageId = reactBtn.getAttribute('data-id');
+                    const picker = document.getElementById(`picker-${messageId}`);
+                    if (picker) {
+                        const isHidden = picker.classList.contains('hidden');
+                        document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
+                        if (isHidden) picker.classList.remove('hidden');
+                    }
+                }
+
+                if (emojiOpt || reactionPill) {
+                    const target = emojiOpt || reactionPill;
+                    const messageId = target.getAttribute('data-id');
+                    const emoji = target.getAttribute('data-emoji');
+                    document.querySelectorAll('.emoji-picker-popup').forEach(p => p.classList.add('hidden'));
+                    await toggleReaction(messageId, emoji);
+                }
+
+                if (deleteBtn) {
+                    const messageId = deleteBtn.getAttribute('data-id');
+                    if (confirm('Are you sure you want to delete this message?')) {
+                        if (db && currentRoomCode) {
+                            try {
+                                await db.collection('rooms').doc(currentRoomCode).collection('messages').doc(messageId).update({
+                                    is_deleted: true,
+                                    content: 'This message was deleted'
+                                });
+                                showToast('Message deleted', 'info');
+                            } catch (err) {
+                                console.error('Failed to delete message:', err);
+                                showToast('Failed to delete message: ' + err.message, 'error');
+                            }
+                        }
+                    }
+                }
+
+                if (editBtn) {
+                    const messageId = editBtn.getAttribute('data-id');
+                    const msgDiv = editBtn.closest('.message');
+                    const prevText = msgDiv ? msgDiv.getAttribute('data-content') : '';
+                    const newContent = prompt('Edit your message:', prevText);
+                    if (newContent !== null && newContent.trim() !== '') {
+                        if (db && currentRoomCode) {
+                            try {
+                                await db.collection('rooms').doc(currentRoomCode).collection('messages').doc(messageId).update({
+                                    content: newContent.trim(),
+                                    edited_at: firebase.firestore.FieldValue.serverTimestamp()
+                                });
+                                showToast('Message updated', 'success');
+                            } catch (err) {
+                                console.error('Failed to edit message:', err);
+                                showToast('Failed to edit message: ' + err.message, 'error');
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+        if (imageLightbox) {
+            const backdrop = imageLightbox.querySelector('.lightbox-backdrop');
+            if (backdrop) backdrop.addEventListener('click', closeLightbox);
+        }
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeLightbox();
+        });
+
+        if (leaveRoomBtn) leaveRoomBtn.addEventListener('click', leaveRoom);
+        if (logoutBtnChat) logoutBtnChat.addEventListener('click', handleLogout);
+
+        window.addEventListener('beforeunload', () => {
+            leaveRoomCleanup();
+        });
     }
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeLightbox();
-    });
-
-    leaveRoomBtn.addEventListener('click', leaveRoom);
-    logoutBtnChat.addEventListener('click', handleLogout);
-
-    window.addEventListener('beforeunload', () => {
-        leaveRoomCleanup();
-    });
 
     // =====================================================
-    // Initialize App
+    // Application Startup & Firebase Verification
     // =====================================================
 
-    function initializeAppAuth() {
+    function startApplication() {
+        cacheDOMElements();
+        attachEventListeners();
         showLoading();
 
+        // Check for URL room query parameter (?room=ABC)
         const urlParams = new URLSearchParams(window.location.search);
         const roomParam = urlParams.get('room');
         if (roomParam) {
             pendingRoomCode = roomParam.trim().toUpperCase();
         }
 
+        // Check active test-mode session
         const savedTestUser = sessionStorage.getItem('nebula_test_user');
         if (savedTestUser) {
             try {
@@ -1541,24 +1598,63 @@
             }
         }
 
-        auth.onAuthStateChanged((user) => {
+        if (auth && !isOfflineFallback) {
+            auth.onAuthStateChanged((user) => {
+                hideLoading();
+                if (sessionStorage.getItem('nebula_test_user')) return;
+                if (user) {
+                    currentUser = user;
+                    showLobby();
+                } else {
+                    currentUser = null;
+                    showScreen(authScreen);
+                }
+            });
+        } else {
             hideLoading();
-            if (sessionStorage.getItem('nebula_test_user')) return;
-            if (user) {
-                currentUser = user;
-                showLobby();
-            } else {
-                currentUser = null;
-                showScreen(authScreen);
-            }
-        });
+            showScreen(authScreen);
+        }
     }
 
-    // Launch application
+    function initFirebaseAndLaunch() {
+        // Wait gracefully for Firebase CDN libraries if still loading
+        let retries = 0;
+        const checkTimer = setInterval(() => {
+            retries++;
+            const isFirebaseReady = typeof window.firebase !== 'undefined' &&
+                window.firebase.apps &&
+                window.firebase.auth &&
+                window.firebase.firestore &&
+                window.firebase.storage;
+
+            if (isFirebaseReady) {
+                clearInterval(checkTimer);
+                try {
+                    if (!firebase.apps.length) {
+                        firebase.initializeApp(firebaseConfig);
+                    }
+                    auth = firebase.auth();
+                    db = firebase.firestore();
+                    storage = firebase.storage();
+                } catch (e) {
+                    console.warn('Firebase init warning:', e);
+                }
+                startApplication();
+            } else if (retries >= 35) {
+                // If network/CDN blocks after 3.5s, fall back to seamless test mode
+                clearInterval(checkTimer);
+                console.warn('Firebase services delayed or offline. Launching fallback test mode.');
+                isOfflineFallback = true;
+                startApplication();
+            }
+        }, 100);
+    }
+
+    // Launch application safely when DOM is ready
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeAppAuth);
+        document.addEventListener('DOMContentLoaded', initFirebaseAndLaunch);
     } else {
-        initializeAppAuth();
+        initFirebaseAndLaunch();
     }
 
 })();
